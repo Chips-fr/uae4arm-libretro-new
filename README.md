@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-# uae4arm-libretro
 
-Basic port. Based on rtype version.
-=======
 # uae4arm-rpi
 Port of uae4arm on Raspberry Pi
 
@@ -46,4 +42,4 @@ For all ARM boards with OpenGLES:
    Then compile the OpenGLES target:
 
       make PLATFORM=gles
->>>>>>> upstream/master
+
