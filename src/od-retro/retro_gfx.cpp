@@ -354,14 +354,17 @@ bool render_screen (bool immediate)
 }
 
 
+extern DISK_GUI_change (void);
+
 void show_screen (int mode)
 {
   unsigned long start = read_processor_time();
 
+  DISK_GUI_change();
 
   last_synctime = read_processor_time();
 // SDL_Flip(prSDLScreen);
-co_switch(mainThread);
+  co_switch(mainThread);
 
   idletime += last_synctime - start;
 
