@@ -5,40 +5,35 @@
   * and without stack magic.
   *
   * Copyright 1999 Patrick Ohly
-  * 
+  *
   * Uses the EXTER interrupt that is setup in filesys.c
   * and some of it needs thread support.
   */
 
-/*
- * The following functions do exactly the same thing as their
- * Amiga counterpart, but can be called in situation where calling
- * the exec.library functions is impossible.
- */
-#ifdef SUPPORT_THREADS
-void uae_Cause(uaecptr interrupt);
-void uae_ReplyMsg(uaecptr msg);
-void uae_PutMsg(uaecptr port, uaecptr msg);
-void uae_Signal(uaecptr task, uae_u32 mask);
-void uae_NotificationHack(uaecptr, uaecptr);
-#endif
-void uae_NewList(uaecptr list);
+#ifndef UAE_NATIVE2AMIGA_H
+#define UAE_NATIVE2AMIGA_H
+
+#include "uae/types.h"
+#include "native2amiga_api.h"
+#include "traps.h"
 
 /*
  * The following functions are shortcuts for calling
- * the exec.library function with CallLib(), so they
+ * the exec.library function with CallLib (), so they
  * are only available in a trap function. This trap
  * function has to be setup with deftrap2() and
  * TRAPFLAG_EXTRA_STACK and stack magic is required.
  */
-uaecptr uae_AllocMem (TrapContext *context, uae_u32 size, uae_u32 flags);
-void uae_FreeMem (TrapContext *context, uaecptr memory, uae_u32 size);
+uaecptr uae_AllocMem (TrapContext *context, uae_u32 size, uae_u32 flags, uaecptr sysbase);
+void uae_FreeMem (TrapContext *context, uaecptr memory, uae_u32 size, uaecptr sysbase);
 
 
 /*
  * to be called when setting up the hardware
  */
 void native2amiga_install (void);
+
+void native2amiga_reset (void);
 
 /*
  * to be called when the Amiga boots, i.e. by filesys_diagentry()
@@ -55,8 +50,9 @@ void native2amiga_startup (void);
 extern smp_comm_pipe native2amiga_pending;
 #endif
 
-STATIC_INLINE void do_uae_int_requested(void)
+STATIC_INLINE void do_uae_int_requested (void)
 {
-	uae_int_requested |= 1;
-	set_uae_int_flag ();
+  atomic_or(&uae_int_requested, 1);
 }
+
+#endif /* UAE_NATIVE2AMIGA_H */

@@ -10,32 +10,44 @@
 #include "options.h"
 #include "uae.h"
 #include "gui.h"
-#include "target.h"
 #include "gui_handling.h"
 #include "memory.h"
 #include "autoconf.h"
 
 bool gui_running = false;
-static int last_active_panel = 1;
+static int last_active_panel = 2;
+
+#define MAX_STARTUP_TITLE 64
+#define MAX_STARTUP_MESSAGE 256
+static TCHAR startup_title[MAX_STARTUP_TITLE] = _T("");
+static TCHAR startup_message[MAX_STARTUP_MESSAGE] = _T("");
+
+
+void target_startup_msg(TCHAR *title, TCHAR *msg)
+{
+  _tcsncpy(startup_title, title, MAX_STARTUP_TITLE);
+  _tcsncpy(startup_message, msg, MAX_STARTUP_MESSAGE);
+}
 
 
 ConfigCategory categories[] = {
-  { "Paths",            "data/paths.ico",     NULL, NULL, InitPanelPaths,     ExitPanelPaths,   RefreshPanelPaths },
-  { "Configurations",   "data/file.ico",      NULL, NULL, InitPanelConfig,    ExitPanelConfig,  RefreshPanelConfig },
-  { "CPU and FPU",      "data/cpu.ico",       NULL, NULL, InitPanelCPU,       ExitPanelCPU,     RefreshPanelCPU },
-  { "Chipset",          "data/cpu.ico",       NULL, NULL, InitPanelChipset,   ExitPanelChipset, RefreshPanelChipset },
-  { "ROM",              "data/chip.ico",      NULL, NULL, InitPanelROM,       ExitPanelROM,     RefreshPanelROM },
-  { "RAM",              "data/chip.ico",      NULL, NULL, InitPanelRAM,       ExitPanelRAM,     RefreshPanelRAM },
-  { "Floppy drives",    "data/35floppy.ico",  NULL, NULL, InitPanelFloppy,    ExitPanelFloppy,  RefreshPanelFloppy },
-  { "Hard drives",      "data/drive.ico",     NULL, NULL, InitPanelHD,        ExitPanelHD,      RefreshPanelHD },
-  { "Display",          "data/screen.ico",    NULL, NULL, InitPanelDisplay,   ExitPanelDisplay, RefreshPanelDisplay },
-  { "Sound",            "data/sound.ico",     NULL, NULL, InitPanelSound,     ExitPanelSound,   RefreshPanelSound },
-  { "Input",            "data/joystick.ico",  NULL, NULL, InitPanelInput,     ExitPanelInput,   RefreshPanelInput },
-  { "Miscellaneous",    "data/misc.ico",      NULL, NULL, InitPanelMisc,      ExitPanelMisc,    RefreshPanelMisc },
-  { "Savestates",       "data/savestate.png", NULL, NULL, InitPanelSavestate, ExitPanelSavestate, RefreshPanelSavestate },
+  { "Paths",            "data/paths.ico",     NULL, NULL, InitPanelPaths,     ExitPanelPaths,     RefreshPanelPaths,      HelpPanelPaths },
+  { "Quickstart",       "data/quickstart.ico",  NULL, NULL, InitPanelQuickstart,  ExitPanelQuickstart,  RefreshPanelQuickstart, HelpPanelQuickstart },
+  { "Configurations",   "data/file.ico",      NULL, NULL, InitPanelConfig,    ExitPanelConfig,    RefreshPanelConfig,     HelpPanelConfig },
+  { "CPU and FPU",      "data/cpu.ico",       NULL, NULL, InitPanelCPU,       ExitPanelCPU,       RefreshPanelCPU,        HelpPanelCPU },
+  { "Chipset",          "data/cpu.ico",       NULL, NULL, InitPanelChipset,   ExitPanelChipset,   RefreshPanelChipset,    HelpPanelChipset },
+  { "ROM",              "data/chip.ico",      NULL, NULL, InitPanelROM,       ExitPanelROM,       RefreshPanelROM,        HelpPanelROM },
+  { "RAM",              "data/chip.ico",      NULL, NULL, InitPanelRAM,       ExitPanelRAM,       RefreshPanelRAM,        HelpPanelRAM },
+  { "Floppy drives",    "data/35floppy.ico",  NULL, NULL, InitPanelFloppy,    ExitPanelFloppy,    RefreshPanelFloppy,     HelpPanelFloppy },
+  { "Hard drives / CD", "data/drive.ico",     NULL, NULL, InitPanelHD,        ExitPanelHD,        RefreshPanelHD,         HelpPanelHD },
+  { "Display",          "data/screen.ico",    NULL, NULL, InitPanelDisplay,   ExitPanelDisplay,   RefreshPanelDisplay,    HelpPanelDisplay },
+  { "Sound",            "data/sound.ico",     NULL, NULL, InitPanelSound,     ExitPanelSound,     RefreshPanelSound,      HelpPanelSound },
+  { "Input",            "data/joystick.ico",  NULL, NULL, InitPanelInput,     ExitPanelInput,     RefreshPanelInput,      HelpPanelInput },
+  { "Miscellaneous",    "data/misc.ico",      NULL, NULL, InitPanelMisc,      ExitPanelMisc,      RefreshPanelMisc,       HelpPanelMisc },
+  { "Savestates",       "data/savestate.png", NULL, NULL, InitPanelSavestate, ExitPanelSavestate, RefreshPanelSavestate,  HelpPanelSavestate },
   { NULL, NULL, NULL, NULL, NULL, NULL, NULL }
 };
-enum { PANEL_PATHS, PANEL_CONFIGURATIONS, PANEL_CPU, PANEL_CHIPSET, PANEL_ROM, PANEL_RAM,
+enum { PANEL_PATHS, PANEL_QUICKSTART, PANEL_CONFIGURATIONS, PANEL_CPU, PANEL_CHIPSET, PANEL_ROM, PANEL_RAM,
        PANEL_FLOPPY, PANEL_HD, PANEL_DISPLAY, PANEL_SOUND, PANEL_INPUT, PANEL_MISC, PANEL_SAVESTATES, 
        NUM_PANELS };
 
@@ -60,19 +72,90 @@ namespace widgets
   gcn::Button* cmdReset;
   gcn::Button* cmdRestart;
   gcn::Button* cmdStart;
+  gcn::Button* cmdShutdown;
+  gcn::Button* cmdHelp;
 }
 
 
-int gui_check_boot_rom(struct uae_prefs *p)
-{
-  if(count_HDs(p) > 0)
-    return 1;
-  if(p->gfxmem_size)
-    return 1;
-  if (p->chipmem_size > 2 * 1024 * 1024)
-    return 1;
+/* Flag for changes in rtarea:
+  Bit 0: any HD in config?
+  Bit 1: force because add/remove HD was clicked or new config loaded
+  Bit 2: socket_emu on
+  Bit 3: mousehack on
+  Bit 4: rtgmem on
+  Bit 5: chipmem larger than 2MB
+  
+  gui_rtarea_flags_onenter is set before GUI is shown, bit 1 may change during GUI display.
+*/
+static int gui_rtarea_flags_onenter;
 
-  return 0;
+static int gui_create_rtarea_flag(struct uae_prefs *p)
+{
+  int flag = 0;
+  
+  if(count_HDs(p) > 0)
+    flag |= 1;
+  
+	if (p->socket_emu)
+		flag |= 4;
+
+  if (p->input_tablet > 0)
+    flag |= 8;
+
+  if(p->rtgboards[0].rtgmem_size)
+    flag |= 16;
+
+  if (p->chipmem_size > 2 * 1024 * 1024)
+    flag |= 32;
+
+  return flag;
+}
+
+void gui_force_rtarea_hdchange(void)
+{
+  gui_rtarea_flags_onenter |= 2;
+}
+
+void gui_restart(void)
+{
+  gui_running = false;
+}
+
+static void (*refreshFuncAfterDraw)(void) = NULL;
+
+void RegisterRefreshFunc(void (*func)(void))
+{
+  refreshFuncAfterDraw = func;
+}
+
+void FocusBugWorkaround(gcn::Window *wnd)
+{
+  // When modal dialog opens via mouse, the dialog will not
+  // has the focus unless one mouse click. We simulate the click...
+  SDL_Event event;
+  event.type = SDL_MOUSEBUTTONDOWN;
+  event.button.button = SDL_BUTTON_LEFT;
+  event.button.state = SDL_PRESSED;
+  event.button.x = wnd->getX() + 2;
+  event.button.y = wnd->getY() + 2;
+  gui_input->pushInput(event);
+  event.type = SDL_MOUSEBUTTONUP;
+  gui_input->pushInput(event);
+}
+
+
+static void ShowHelpRequested()
+{
+  std::vector<std::string> helptext;
+  if(categories[last_active_panel].HelpFunc != NULL && categories[last_active_panel].HelpFunc(helptext))
+  {
+    //------------------------------------------------
+    // Show help for current panel
+    //------------------------------------------------
+    char title[128];
+    snprintf(title, 128, "Help for %s", categories[last_active_panel].category);
+    ShowHelp(title, helptext);
+  }
 }
 
 
@@ -92,9 +175,8 @@ namespace sdl
     //-------------------------------------------------
     // Create new screen for GUI
     //-------------------------------------------------
-    #if defined (RASPBERRY)
+    #if defined(RASPBERRY) && !defined(DEBUG)
     const SDL_VideoInfo* videoInfo = SDL_GetVideoInfo ();
-    printf("Current resolution: %d x %d %d bpp\n",videoInfo->current_w, videoInfo->current_h, videoInfo->vfmt->BitsPerPixel);
     gui_screen = SDL_SetVideoMode(videoInfo->current_w,videoInfo->current_h,16,SDL_SWSURFACE |SDL_FULLSCREEN);
     #else
     gui_screen = SDL_SetVideoMode(GUI_WIDTH, GUI_HEIGHT, 16, SDL_SWSURFACE);
@@ -123,8 +205,10 @@ namespace sdl
     delete gui_input;
     delete gui_graphics;
     
-    SDL_FreeSurface(gui_screen);
-    gui_screen = NULL;
+    if(gui_screen != NULL) {
+      SDL_FreeSurface(gui_screen);
+      gui_screen = NULL;
+    }
   }
 
   void gui_run()
@@ -140,57 +224,130 @@ namespace sdl
       SDL_Event event;
       while(SDL_PollEvent(&event))
       {
-    		if (event.type == SDL_QUIT)
-    		{
-          //-------------------------------------------------
-          // Quit entire program via SQL-Quit
-          //-------------------------------------------------
-    			uae_quit();
-    			gui_running = false;
-    			break;
-    		}
-
+        if ((event.type == SDL_JOYBUTTONDOWN) || (event.type == SDL_JOYBUTTONUP)) {
+            TCHAR message[255];
+            sprintf(message, "BUTTON %i %i %i %i\n", event.jbutton.type, event.jbutton.which, event.jbutton.button, event.jbutton.state);
+            write_log(message);
+            if ((event.jbutton.button == 0) || (event.jbutton.button == 1)) {
+              SDL_Event fake_event;
+              if (event.type == SDL_JOYBUTTONDOWN)
+                fake_event.type = SDL_KEYDOWN;
+              else
+                fake_event.type = SDL_KEYUP;
+              fake_event.key.keysym.sym = SDLK_RETURN;
+              gui_input->pushInput(fake_event); // Fire key down
+            }
+            // from emu to menu and vice-versa.
+            if ((event.type == SDL_JOYBUTTONDOWN) && (currprefs.button_for_menu != -1) && (event.jbutton.button == currprefs.button_for_menu))
+                if(emulating && widgets::cmdStart->isEnabled())
+                {
+                  //------------------------------------------------
+                  // Continue emulation
+                  //------------------------------------------------
+                  gui_running = false;
+                }
+                else
+                {
+                  //------------------------------------------------
+                  // First start of emulator -> reset Amiga
+                  //------------------------------------------------
+                  uae_reset(0,1);
+                  gui_running = false;
+                }
+            if ((event.type == SDL_JOYBUTTONDOWN) && (currprefs.button_for_quit != -1) && (event.jbutton.button == currprefs.button_for_quit))
+            {
+              //-------------------------------------------------
+              // Quit entire program via joybutton
+              //-------------------------------------------------
+              gcn::FocusHandler* focusHdl;
+              gcn::Widget* activeWidget;
+              focusHdl = gui_top->_getFocusHandler();
+              activeWidget = focusHdl->getFocused();
+              if(dynamic_cast<gcn::TextField*>(activeWidget) == NULL) {
+          			// ...but only if we are not in a Textfield...
+          			uae_quit();
+          			gui_running = false;
+          		}
+            }
+        } else if (event.type == SDL_JOYHATMOTION) {
+            TCHAR message[255];
+            sprintf(message, "HAT %i %i %i %i\n", event.jhat.type, event.jhat.which, event.jhat.hat, event.jhat.value);
+            write_log(message);
+            SDL_Event fake_event;
+            if (event.jhat.value & SDL_HAT_UP) {
+                fake_event.key.keysym.sym = VK_UP;
+                if(HandleNavigation(DIRECTION_UP))
+                    continue;
+            } else if (event.jhat.value & SDL_HAT_DOWN) {
+                fake_event.key.keysym.sym = VK_DOWN;
+                if(HandleNavigation(DIRECTION_DOWN))
+                    continue;
+            } else if (event.jhat.value & SDL_HAT_LEFT) {
+                fake_event.key.keysym.sym = VK_LEFT;
+                if(HandleNavigation(DIRECTION_LEFT))
+                    continue;
+            } else if (event.jhat.value & SDL_HAT_RIGHT) {
+                fake_event.key.keysym.sym = VK_RIGHT;
+                if(HandleNavigation(DIRECTION_RIGHT))
+                    continue;
+            }
+            if (event.jhat.value) {
+              fake_event.type = SDL_KEYDOWN;  // and the key up
+              gui_input->pushInput(fake_event); // Fire key down
+              fake_event.type = SDL_KEYUP;  // and the key up
+              gui_input->pushInput(fake_event);
+            }
+        }
         else if (event.type == SDL_KEYDOWN)
         {
+          gcn::FocusHandler* focusHdl;
+          gcn::Widget* activeWidget;
+
+
+          if (event.key.keysym.sym == currprefs.key_for_menu)
+          {
+            if(emulating && widgets::cmdStart->isEnabled())
+            {
+              //------------------------------------------------
+              // Continue emulation
+              //------------------------------------------------
+              gui_running = false;
+            }
+            else
+            {
+              //------------------------------------------------
+              // First start of emulator -> reset Amiga
+              //------------------------------------------------
+              uae_reset(0,1);
+              gui_running = false;
+            }
+           } else
           switch(event.key.keysym.sym)
           {
             case SDLK_q:
               //-------------------------------------------------
               // Quit entire program via Q on keyboard
               //-------------------------------------------------
-        			uae_quit();
-        			gui_running = false;
+              focusHdl = gui_top->_getFocusHandler();
+              activeWidget = focusHdl->getFocused();
+              if(dynamic_cast<gcn::TextField*>(activeWidget) == NULL) {
+          			// ...but only if we are not in a Textfield...
+          			uae_quit();
+          			gui_running = false;
+          		}
         			break;
 
-            case SDLK_ESCAPE:
-            case SDLK_RCTRL:
+            case VK_ESCAPE:
+            case VK_R:
               //-------------------------------------------------
               // Reset Amiga
               //-------------------------------------------------
-        			uae_reset(1);
-        			gui_running = false;
-        			break;
+              uae_reset(1,1);
+              gui_running = false;
+              break;
 
-            case SDLK_LCTRL:
-    			    if(emulating && widgets::cmdStart->isEnabled())
-    		      {
-                //------------------------------------------------
-                // Continue emulation
-                //------------------------------------------------
-                gui_running = false;
-    		      }
-              else
-              {
-                //------------------------------------------------
-                // First start of emulator -> reset Amiga
-                //------------------------------------------------
-          			uae_reset(0);
-          			gui_running = false;
-              }
-              break;              
-
-            case SDLK_PAGEDOWN:
-            case SDLK_HOME:
+            case VK_X:
+            case VK_A:
               //------------------------------------------------
               // Simulate press of enter when 'X' pressed
               //------------------------------------------------
@@ -199,24 +356,29 @@ namespace sdl
               event.type = SDL_KEYUP;  // and the key up
               break;
 
-            case SDLK_UP:
+            case VK_UP:
               if(HandleNavigation(DIRECTION_UP))
                 continue; // Don't change value when enter ComboBox -> don't send event to control
               break;
               
-            case SDLK_DOWN:
+            case VK_DOWN:
               if(HandleNavigation(DIRECTION_DOWN))
                 continue; // Don't change value when enter ComboBox -> don't send event to control
               break;
               
-            case SDLK_LEFT:
+            case VK_LEFT:
               if(HandleNavigation(DIRECTION_LEFT))
                 continue; // Don't change value when enter Slider -> don't send event to control
               break;
               
-            case SDLK_RIGHT:
+            case VK_RIGHT:
               if(HandleNavigation(DIRECTION_RIGHT))
                 continue; // Don't change value when enter Slider -> don't send event to control
+              break;
+          
+            case SDLK_F1:
+              ShowHelpRequested();
+              widgets::cmdHelp->requestFocus();
               break;
           }
         }
@@ -227,12 +389,23 @@ namespace sdl
         gui_input->pushInput(event);
       }
 
+  		if(gui_rtarea_flags_onenter != gui_create_rtarea_flag(&changed_prefs))
+        DisableResume();
+
       // Now we let the Gui object perform its logic.
       uae_gui->logic();
       // Now we let the Gui object draw itself.
       uae_gui->draw();
       // Finally we update the screen.
+      wait_for_vsync();
       SDL_Flip(gui_screen);
+      
+      if(refreshFuncAfterDraw != NULL)
+      {
+        void (*currFunc)(void) = refreshFuncAfterDraw;
+        refreshFuncAfterDraw = NULL;
+        currFunc();
+      }
     }
   }
 
@@ -246,6 +419,16 @@ namespace widgets
     public:
       void action(const gcn::ActionEvent& actionEvent)
       {
+			if (actionEvent.getSource() == cmdShutdown)
+			{
+				// ------------------------------------------------
+				// Shutdown the host (power off)
+				// ------------------------------------------------
+				uae_quit();
+				gui_running = false;
+				host_shutdown();
+			}
+			else 
 	      if (actionEvent.getSource() == cmdQuit)
 	      {
           //-------------------------------------------------
@@ -259,7 +442,7 @@ namespace widgets
           //-------------------------------------------------
           // Reset Amiga via click on Reset-button
           //-------------------------------------------------
-    			uae_reset(1);
+    			uae_reset(1, 1);
     			gui_running = false;
         }
   			else if(actionEvent.getSource() == cmdRestart)
@@ -270,13 +453,13 @@ namespace widgets
           char tmp[MAX_PATH];
           fetch_configurationpath (tmp, sizeof (tmp));
           if(strlen(last_loaded_config) > 0)
-            strcat (tmp, last_loaded_config);
+            strncat (tmp, last_loaded_config, MAX_PATH - 1);
           else
           {
-            strcat (tmp, OPTIONSFILENAME);
-            strcat (tmp, ".uae");
+            strncat (tmp, OPTIONSFILENAME, MAX_PATH);
+            strncat (tmp, ".uae", MAX_PATH);
           }
-    			uae_restart(0, tmp);
+    			uae_restart(-1, tmp);
     			gui_running = false;
 			  }
 			  else if(actionEvent.getSource() == cmdStart)
@@ -293,9 +476,14 @@ namespace widgets
             //------------------------------------------------
             // First start of emulator -> reset Amiga
             //------------------------------------------------
-      			uae_reset(0);
+      			uae_reset(0, 1);
       			gui_running = false;
           }
+        }
+        else if(actionEvent.getSource() == cmdHelp)
+        {
+          ShowHelpRequested();
+          cmdHelp->requestFocus();
         }
       }
   };
@@ -315,6 +503,7 @@ namespace widgets
             categories[i].selector->setActive(true);
             categories[i].panel->setVisible(true);
             last_active_panel = i;
+            cmdHelp->setVisible(categories[last_active_panel].HelpFunc != NULL);
           }
           else
           {
@@ -376,6 +565,12 @@ namespace widgets
     cmdQuit->setId("Quit");
     cmdQuit->addActionListener(mainButtonActionListener);
 
+	cmdShutdown = new gcn::Button("Shutdown");
+	cmdShutdown->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
+	cmdShutdown->setBaseColor(gui_baseCol);
+	cmdShutdown->setId("Shutdown");
+	cmdShutdown->addActionListener(mainButtonActionListener);
+
    	cmdReset = new gcn::Button("Reset");
   	cmdReset->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
     cmdReset->setBaseColor(gui_baseCol);
@@ -396,6 +591,12 @@ namespace widgets
   	cmdStart->setId("Start");
     cmdStart->addActionListener(mainButtonActionListener);
 
+  	cmdHelp = new gcn::Button("Help");
+  	cmdHelp->setSize(BUTTON_WIDTH, BUTTON_HEIGHT);
+    cmdHelp->setBaseColor(gui_baseCol);
+  	cmdHelp->setId("Help");
+    cmdHelp->addActionListener(mainButtonActionListener);
+    
   	//--------------------------------------------------
     // Create selector entries
   	//--------------------------------------------------
@@ -437,7 +638,9 @@ namespace widgets
   	//--------------------------------------------------
     gui_top->add(cmdReset, DISTANCE_BORDER, GUI_HEIGHT - DISTANCE_BORDER - BUTTON_HEIGHT);
     gui_top->add(cmdQuit, DISTANCE_BORDER + BUTTON_WIDTH + DISTANCE_NEXT_X, GUI_HEIGHT - DISTANCE_BORDER - BUTTON_HEIGHT);
-//    gui_top->add(cmdRestart, DISTANCE_BORDER + 2 * BUTTON_WIDTH + 2 * DISTANCE_NEXT_X, GUI_HEIGHT - DISTANCE_BORDER - BUTTON_HEIGHT);
+    gui_top->add(cmdShutdown, DISTANCE_BORDER + 2 * BUTTON_WIDTH + 2 * DISTANCE_NEXT_X, GUI_HEIGHT - DISTANCE_BORDER - BUTTON_HEIGHT);
+    //gui_top->add(cmdRestart, DISTANCE_BORDER + 2 * BUTTON_WIDTH + 2 * DISTANCE_NEXT_X, GUI_HEIGHT - DISTANCE_BORDER - BUTTON_HEIGHT);
+    gui_top->add(cmdHelp, DISTANCE_BORDER + 3 * BUTTON_WIDTH + 3 * DISTANCE_NEXT_X, GUI_HEIGHT - DISTANCE_BORDER - BUTTON_HEIGHT);
     gui_top->add(cmdStart, GUI_WIDTH - DISTANCE_BORDER - BUTTON_WIDTH, GUI_HEIGHT - DISTANCE_BORDER - BUTTON_HEIGHT);
 
     gui_top->add(selectors, DISTANCE_BORDER + 1, DISTANCE_BORDER + 1);
@@ -450,7 +653,10 @@ namespace widgets
   	//--------------------------------------------------
   	// Activate last active panel
   	//--------------------------------------------------
+  	if(!emulating && quickstart_start)
+  	  last_active_panel = 1;
   	categories[last_active_panel].selector->requestFocus();
+  	cmdHelp->setVisible(categories[last_active_panel].HelpFunc != NULL);
   }
 
 
@@ -470,10 +676,12 @@ namespace widgets
     delete selectors;
 
     delete cmdQuit;
+	delete cmdShutdown;
     delete cmdReset;
     delete cmdRestart;
     delete cmdStart;
-   
+    delete cmdHelp;
+    
     delete mainButtonActionListener;
     
     delete gui_font;
@@ -510,15 +718,21 @@ void DisableResume(void)
 
 void run_gui(void)
 {
-  int boot_rom_on_enter;
-  
   gui_running = true;
-  boot_rom_on_enter = gui_check_boot_rom(&currprefs);
+  gui_rtarea_flags_onenter = gui_create_rtarea_flag(&currprefs);
+  
+  expansion_generate_autoconfig_info(&changed_prefs);
 
   try
   {
     sdl::gui_init();
     widgets::gui_init();
+    if(_tcslen(startup_message) > 0) {
+      ShowMessage(startup_title, startup_message, _T(""), _T("Ok"), _T(""));
+      _tcscpy(startup_title, _T(""));
+      _tcscpy(startup_message, _T(""));
+      widgets::cmdStart->requestFocus();
+    }
     sdl::gui_run();
     widgets::gui_halt();
     sdl::gui_halt();
@@ -541,14 +755,22 @@ void run_gui(void)
     std::cout << "Unknown exception" << std::endl;
     uae_quit();
   }
-  if(quit_program > 1 || quit_program < -1)
+
+  expansion_generate_autoconfig_info(&changed_prefs);
+  cfgfile_compatibility_romtype(&changed_prefs);
+  
+  if(quit_program > UAE_QUIT || quit_program < -UAE_QUIT)
   {
   	//--------------------------------------------------
     // Prepare everything for Reset of Amiga
   	//--------------------------------------------------
 		currprefs.nr_floppies = changed_prefs.nr_floppies;
+		screen_is_picasso = 0;
 		
-		if(boot_rom_on_enter != gui_check_boot_rom(&changed_prefs))
-	    quit_program = -3; // Hardreset required...
+		if(gui_rtarea_flags_onenter != gui_create_rtarea_flag(&changed_prefs))
+	    quit_program = -UAE_RESET_HARD; // Hardreset required...
   }
+
+  // Reset counter for access violations
+  init_max_signals();
 }

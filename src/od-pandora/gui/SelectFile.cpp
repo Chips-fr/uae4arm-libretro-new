@@ -28,6 +28,8 @@ static bool dialogFinished = false;
 static bool createNew = false;
 static char workingDir[MAX_PATH];
 static const char **filefilter;
+static bool dialogCreated = false;
+static int selectedOnStart = -1;
 
 static gcn::Window *wndSelectFile;
 static gcn::Button* cmdOK;
@@ -94,22 +96,22 @@ class FileButtonActionListener : public gcn::ActionListener
           char tmp[MAX_PATH];
           if(txtFilename->getText().length() <= 0)
             return;
-          strcpy(tmp, workingDir);
-          strcat(tmp, "/");
-          strcat(tmp, txtFilename->getText().c_str());
+          strncpy(tmp, workingDir, MAX_PATH - 1);
+          strncat(tmp, "/", MAX_PATH - 1);
+          strncat(tmp, txtFilename->getText().c_str(), MAX_PATH - 1);
           if(strstr(tmp, filefilter[0]) == NULL)
-            strcat(tmp, filefilter[0]);
+            strncat(tmp, filefilter[0], MAX_PATH - 1);
           if(my_existsfile(tmp) == 1)
             return; // File already exists
-          strcpy(workingDir, tmp);
+          strncpy(workingDir, tmp, MAX_PATH - 1);
           dialogResult = true;
         }
         else
         {
           if(fileList->isDir(selected_item))
             return; // Directory selected -> Ok not possible
-          strcat(workingDir, "/");
-          strcat(workingDir, fileList->getElementAt(selected_item).c_str());
+          strncat(workingDir, "/", MAX_PATH - 1);
+          strncat(workingDir, fileList->getElementAt(selected_item).c_str(), MAX_PATH - 1);
           dialogResult = true;
         }
       }
@@ -129,11 +131,11 @@ static void checkfoldername (char *current)
 	{ 
 	  fileList->changeDir(current);
 	  ptr = realpath(current, actualpath);
-	  strcpy(workingDir, ptr);
+	  strncpy(workingDir, ptr, MAX_PATH);
 	  closedir(dir);
 	}
   else
-    strcpy(workingDir, start_path_data);
+    strncpy(workingDir, start_path_data, MAX_PATH);
   txtCurrent->setText(workingDir);
 }
 
@@ -146,6 +148,7 @@ static void checkfilename(char *current)
     if(!fileList->isDir(i) && !strcasecmp(fileList->getElementAt(i).c_str(), actfile))
     {
       lstFiles->setSelected(i);
+      selectedOnStart = i;
       break;
     }
   }
@@ -158,12 +161,12 @@ class SelectFileActionListener : public gcn::ActionListener
     void action(const gcn::ActionEvent& actionEvent)
     {
       int selected_item;
-      char foldername[256] = "";
+      char foldername[MAX_PATH] = "";
 
       selected_item = lstFiles->getSelected();
-      strcpy(foldername, workingDir);
-      strcat(foldername, "/");
-      strcat(foldername, fileList->getElementAt(selected_item).c_str());
+      strncpy(foldername, workingDir, MAX_PATH);
+      strncat(foldername, "/", MAX_PATH - 1);
+      strncat(foldername, fileList->getElementAt(selected_item).c_str(), MAX_PATH - 1);
       if(fileList->isDir(selected_item))
         checkfoldername(foldername);
       else if(!createNew)
@@ -243,9 +246,10 @@ static void InitSelectFile(const char *title)
   wndSelectFile->add(scrAreaFiles);
   
   gui_top->add(wndSelectFile);
+  
   lstFiles->requestFocus();
+  lstFiles->setSelected(0);
   wndSelectFile->requestModalFocus();
-
 }
 
 
@@ -275,6 +279,8 @@ static void ExitSelectFile(void)
 
 static void SelectFileLoop(void)
 {
+  FocusBugWorkaround(wndSelectFile);  
+  
   while(!dialogFinished)
   {
     SDL_Event event;
@@ -284,11 +290,11 @@ static void SelectFileLoop(void)
       {
         switch(event.key.keysym.sym)
         {
-          case SDLK_ESCAPE:
+          case VK_ESCAPE:
             dialogFinished = true;
             break;
             
-          case SDLK_LEFT:
+          case VK_LEFT:
             {
               gcn::FocusHandler* focusHdl = gui_top->_getFocusHandler();
               gcn::Widget* activeWidget = focusHdl->getFocused();
@@ -307,7 +313,7 @@ static void SelectFileLoop(void)
             }
             break;
             
-          case SDLK_RIGHT:
+          case VK_RIGHT:
             {
               gcn::FocusHandler* focusHdl = gui_top->_getFocusHandler();
               gcn::Widget* activeWidget = focusHdl->getFocused();
@@ -326,8 +332,8 @@ static void SelectFileLoop(void)
             }
             break;
 
-          case SDLK_PAGEDOWN:
-          case SDLK_HOME:
+          case VK_X:
+          case VK_A:
             event.key.keysym.sym = SDLK_RETURN;
             gui_input->pushInput(event); // Fire key down
             event.type = SDL_KEYUP;  // and the key up
@@ -346,7 +352,15 @@ static void SelectFileLoop(void)
     // Now we let the Gui object draw itself.
     uae_gui->draw();
     // Finally we update the screen.
+    wait_for_vsync();
     SDL_Flip(gui_screen);
+    
+    if(!dialogCreated)
+    {
+      dialogCreated = true;
+      if(selectedOnStart >= 0)
+        scrAreaFiles->setVerticalScrollAmount(selectedOnStart * 19);
+    }
   }  
 }
 
@@ -360,7 +374,8 @@ bool SelectFile(const char *title, char *value, const char *filter[], bool creat
   dialogFinished = false;
   createNew = create;
   filefilter = filter;
-
+  dialogCreated = false;
+  selectedOnStart = -1;
 
   #ifdef FILE_SELECT_KEEP_POSITION
   if (Already_init == 0)

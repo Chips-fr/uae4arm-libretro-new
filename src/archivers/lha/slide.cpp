@@ -14,11 +14,6 @@
 #include "lha.h"
 
 
-#ifdef DEBUG
-FILE *fout = NULL;
-static int noslide = 1;
-#endif
-
 /* ------------------------------------------------------------------------ */
 
 static unsigned long encoded_origsize;
@@ -28,7 +23,7 @@ static unsigned long encoded_origsize;
 static unsigned int *hash;
 static unsigned int *prev;
 
-/* static unsigned char  *lha_text; */
+/* static unsigned char  *text; */
 unsigned char *too_flag;
 
 #if 0
@@ -81,7 +76,7 @@ static struct decode_option decode_set;
 
 #if 0
 static node     pos, matchpos, avail, *position, *parent, *prev;
-static int      remainder, matchlen;
+static int      remainderlh, matchlen;
 static unsigned char *level, *childcount;
 static unsigned long dicsiz;  /* t.okamoto */
 static unsigned short max_hash_val;
@@ -98,7 +93,7 @@ static unsigned short hash1, hash2;
 
 #define HSHSIZ (((unsigned long)1) <<15)
 #define NIL 0
-#define LIMIT 0x100	/* chain Ĺ�� limit */
+#define LIMIT 0x100	/* chain Ä¹¤Î limit */
 
 static unsigned int txtsiz;
 
@@ -108,12 +103,13 @@ static unsigned int hval;
 static int matchlen;
 static unsigned int matchpos;
 static unsigned int pos;
-static unsigned int remainder;
+static unsigned int remainderlh;
 
 #if 0
 /* ------------------------------------------------------------------------ */
 int
-encode_alloc(int method)
+encode_alloc(method)
+	int             method;
 {
 	if (method == LZHUFF1_METHOD_NUM) {	/* Changed N.Watazaki */
 		encode_set = encode_define[0];
@@ -139,10 +135,10 @@ encode_alloc(int method)
 
 	hash = (unsigned int*)malloc(HSHSIZ * sizeof(unsigned int));
 	prev = (unsigned int*)malloc(DICSIZ * sizeof(unsigned int));
-	lha_text = (unsigned char*)malloc(TXTSIZ);
+	text = (unsigned char*)malloc(TXTSIZ);
 	too_flag = (unsigned char*)malloc(HSHSIZ);
 
-	if (hash == NULL || prev == NULL || lha_text == NULL || too_flag == NULL)
+	if (hash == NULL || prev == NULL || text == NULL || too_flag == NULL)
 		exit(207);
 
 	return method;
@@ -175,20 +171,20 @@ static void update()
 	long n;
 
 #if 0
-	memmove(&lha_text[0], &text[dicsiz], (unsigned)(txtsiz - dicsiz));
+	memmove(&text[0], &text[dicsiz], (unsigned)(txtsiz - dicsiz));
 #else
 	{
 		int m;
 		i = 0; j = dicsiz; m = txtsiz-dicsiz;
 		while (m-- > 0) {
-			lha_text[i++] = lha_text[j++];
+			text[i++] = text[j++];
 		}
 	}
 #endif
-	n = fread_crc(&lha_text[(unsigned)(txtsiz - dicsiz)], 
-	                           (unsigned)dicsiz, infile);
+	n = fread_crc(&text[(unsigned)(txtsiz - dicsiz)],
+				   (unsigned)dicsiz, infile);
 
-	remainder += n;
+	remainderlh += n;
 	encoded_origsize += n;
 
 	pos -= dicsiz;
@@ -227,7 +223,7 @@ static void match_insert()
 
 	off = 0;
 	for (h = hval; too_flag[h] && off < maxmatch - THRESHOLD; ) {
-		h = ((h << 5) ^ lha_text[pos + (++off) + 2]) & (unsigned)(HSHSIZ - 1);
+		h = ((h << 5) ^ text[pos + (++off) + 2]) & (unsigned)(HSHSIZ - 1);
 	}
 	if (off == maxmatch - THRESHOLD) off = 0;
 	for (;;) {
@@ -237,9 +233,9 @@ static void match_insert()
 		while (scan_pos > scan_end) {
 			chain++;
 
-			if (lha_text[scan_pos + matchlen - off] == lha_text[pos + matchlen]) {
+			if (text[scan_pos + matchlen - off] == text[pos + matchlen]) {
 				{
-					a = lha_text + scan_pos - off;  b = lha_text + pos;
+					a = text + scan_pos - off;  b = text + pos;
 					for (len = 0; len < max && *a++ == *b++; len++);
 				}
 
@@ -279,17 +275,18 @@ static void match_insert()
 
 static void get_next()
 {
-	remainder--;
+	remainderlh--;
 	if (++pos >= txtsiz - maxmatch) {
 		update();
 #ifdef DEBUG
 		noslide = 0;
 #endif
 	}
-	hval = ((hval << 5) ^ lha_text[pos + 2]) & (unsigned)(HSHSIZ - 1);
+	hval = ((hval << 5) ^ text[pos + 2]) & (unsigned)(HSHSIZ - 1);
 }
 
-void encode(struct interfacing *lhinterface)
+void encode(lhinterface)
+struct interfacing *lhinterface;
 {
 	int lastmatchlen;
 	unsigned int lastmatchoffset;
@@ -309,31 +306,31 @@ void encode(struct interfacing *lhinterface)
 	crc = unpackable = 0;
 
 	/* encode_alloc(); */ /* allocate_memory(); */
-	init_slide();  
+	init_slide();
 
 	encode_set.encode_start();
-	memset(&lha_text[0], ' ', (long)TXTSIZ);
+	memset(&text[0], ' ', (long)TXTSIZ);
 
-	remainder = fread_crc(&lha_text[dicsiz], txtsiz-dicsiz, infile);
-	encoded_origsize = remainder;
+	remainderlh = fread_crc(&text[dicsiz], txtsiz-dicsiz, infile);
+	encoded_origsize = remainderlh;
 	matchlen = THRESHOLD - 1;
 
 	pos = dicsiz;
 
-	if (matchlen > remainder) matchlen = remainder;
-	hval = ((((lha_text[dicsiz] << 5) ^ lha_text[dicsiz + 1]) << 5) 
-	        ^ lha_text[dicsiz + 2]) & (unsigned)(HSHSIZ - 1);
+	if (matchlen > remainderlh) matchlen = remainderlh;
+	hval = ((((text[dicsiz] << 5) ^ text[dicsiz + 1]) << 5)
+		^ text[dicsiz + 2]) & (unsigned)(HSHSIZ - 1);
 
 	insert();
-	while (remainder > 0 && ! unpackable) {
+	while (remainderlh > 0 && ! unpackable) {
 		lastmatchlen = matchlen;  lastmatchoffset = pos - matchpos - 1;
 		--matchlen;
 		get_next();  match_insert();
-		if (matchlen > remainder) matchlen = remainder;
+		if (matchlen > remainderlh) matchlen = remainderlh;
 		if (matchlen > lastmatchlen || lastmatchlen < THRESHOLD) {
-			encode_set.output(lha_text[pos - 1], 0);
+			encode_set.output(text[pos - 1], 0);
 #ifdef DEBUG
-			fprintf(fout, "%u C %02X\n", addr, lha_text[pos-1]);
+			fprintf(fout, "%u C %02X\n", addr, text[pos-1]);
 			addr++;
 #endif
 			count++;
@@ -350,7 +347,7 @@ void encode(struct interfacing *lhinterface)
 			{
 			  int t,cc;
 			for (t=0; t<lastmatchlen+1; t++) {
-			  cc = lha_text[(pos-(lastmatchoffset)) & (dicsiz-1)];
+			  cc = text[(pos-(lastmatchoffset)) & (dicsiz-1)];
 			  fprintf(fout, "%02X ", cc);
 			}
 			fprintf(fout, "\n");
@@ -363,7 +360,7 @@ void encode(struct interfacing *lhinterface)
 			get_next();
 			matchlen = THRESHOLD - 1;
 			match_insert();
-			if (matchlen > remainder) matchlen = remainder;
+			if (matchlen > remainderlh) matchlen = remainderlh;
 		}
 	}
 	encode_set.encode_end();
@@ -376,18 +373,12 @@ void encode(struct interfacing *lhinterface)
 
 #endif
 
-int
-decode(struct interfacing *lhinterface)
+int decode(struct interfacing *lhinterface)
 {
 	unsigned int i, j, k, c;
 	unsigned int dicsiz1, offset;
 	unsigned char *dtext;
-	
 
-#ifdef DEBUG
-	fout = fopen("de", "wt");
-	if (fout == NULL) exit(1);
-#endif
 
 	infile = lhinterface->infile;
 	outfile = lhinterface->outfile;
@@ -406,43 +397,31 @@ decode(struct interfacing *lhinterface)
 	decode_set.decode_start();
 	dicsiz1 = dicsiz - 1;
 	offset = (lhinterface->method == LARC_METHOD_NUM) ? 0x100 - 2 : 0x100 - 3;
-	count = 0;
+	lhcount = 0;
 	loc = 0;
-	while (count < origsize) {
+	while (lhcount < origsize) {
 		c = decode_set.decode_c();
 		if (c <= UCHAR_MAX) {
-#ifdef DEBUG
-		  fprintf(fout, "%u C %02X\n", count, c);
-#endif
 			dtext[loc++] = c;
 			if (loc == dicsiz) {
 				fwrite_crc(dtext, dicsiz, outfile);
 				loc = 0;
 			}
-			count++;
+			lhcount++;
 		}
 		else {
 			j = c - offset;
 			i = (loc - decode_set.decode_p() - 1) & dicsiz1;
-#ifdef DEBUG
-			fprintf(fout, "%u M %u %u ", count, (loc-1-i) & dicsiz1, j);
-#endif
-			count += j;
+			lhcount += j;
 			for (k = 0; k < j; k++) {
 				c = dtext[(i + k) & dicsiz1];
 
-#ifdef DEBUG
-				fprintf(fout, "%02X ", c & 0xff);
-#endif
 				dtext[loc++] = c;
 				if (loc == dicsiz) {
 					fwrite_crc(dtext, dicsiz, outfile);
 					loc = 0;
 				}
 			}
-#ifdef DEBUG
-			fprintf(fout, "\n");
-#endif
 		}
 	}
 	if (loc != 0) {

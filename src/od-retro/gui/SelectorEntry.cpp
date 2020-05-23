@@ -1,9 +1,5 @@
-
-#if defined(__LIBRETRO__)
-#include "od-retro/gui/SelectorEntry.hpp"
-#else
 #include "od-pandora/gui/SelectorEntry.hpp"
-#endif
+
 #include "guichan/widgets/container.hpp"
 #include "guichan/widgets/icon.hpp"
 #include "guichan/widgets/label.hpp"

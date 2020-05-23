@@ -97,6 +97,8 @@ static void ExitShowMessage(void)
 
 static void ShowMessageLoop(void)
 {
+  FocusBugWorkaround(wndShowMessage);  
+
   while(!dialogFinished)
   {
     SDL_Event event;
@@ -106,12 +108,12 @@ static void ShowMessageLoop(void)
       {
         switch(event.key.keysym.sym)
         {
-          case SDLK_ESCAPE:
+          case VK_ESCAPE:
             dialogFinished = true;
             break;
             
-          case SDLK_LEFT:
-          case SDLK_RIGHT:
+          case VK_LEFT:
+          case VK_RIGHT:
             {
               gcn::FocusHandler* focusHdl = gui_top->_getFocusHandler();
               gcn::Widget* activeWidget = focusHdl->getFocused();
@@ -123,8 +125,8 @@ static void ShowMessageLoop(void)
             }
             break;
 
-          case SDLK_PAGEDOWN:
-          case SDLK_HOME:
+          case VK_X:
+          case VK_A:
             event.key.keysym.sym = SDLK_RETURN;
             gui_input->pushInput(event); // Fire key down
             event.type = SDL_KEYUP;  // and the key up
@@ -143,6 +145,7 @@ static void ShowMessageLoop(void)
     // Now we let the Gui object draw itself.
     uae_gui->draw();
     // Finally we update the screen.
+    wait_for_vsync();
     SDL_Flip(gui_screen);
   }  
 }
@@ -165,6 +168,7 @@ bool ShowMessage(const char *title, const char *line1, const char *line2, const 
     cmdCancel->setVisible(false);
     cmdOK->setPosition(cmdCancel->getX(), cmdCancel->getY());
   }
+  cmdOK->setEnabled(true);
   ShowMessageLoop();
   ExitShowMessage();
   

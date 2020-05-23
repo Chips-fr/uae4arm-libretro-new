@@ -1,3 +1,8 @@
+#ifndef UAE_READCPU_H
+#define UAE_READCPU_H
+
+#include "uae/types.h"
+
 ENUMDECL {
   Dreg, Areg, Aind, Aipi, Apdi, Ad16, Ad8r,
   absw, absl, PC16, PC8r, imm, imm0, imm1, imm2, immi, am_unknown, am_illg
@@ -31,17 +36,19 @@ ENUMDECL {
     i_MMUOP030, i_PFLUSHN, i_PFLUSH, i_PFLUSHAN, i_PFLUSHA,
     i_PLPAR, i_PLPAW, i_PTESTR, i_PTESTW,
     i_LPSTOP,
-    i_EMULOP_RETURN, i_EMULOP, i_NATFEAT_ID, i_NATFEAT_CALL
+	MAX_OPCODE_FAMILY
 } ENUMNAME (instrmnem);
 
-extern struct mnemolookup {
+struct mnemolookup {
     instrmnem mnemo;
-    const char *name;
-    const char *friendlyname;
-} lookuptab[];
+    const TCHAR *name;
+    const TCHAR *friendlyname;
+};
+
+extern struct mnemolookup lookuptab[];
 
 ENUMDECL {
-    sz_byte, sz_word, sz_long
+    sz_byte, sz_word, sz_long, sz_single, sz_double, sz_extended, sz_packed
 } ENUMNAME (wordsizes);
 
 ENUMDECL {
@@ -72,17 +79,20 @@ ENUMDECL {
 struct instr_def {
     unsigned int bits;
     int n_variable;
-    char bitpos[16];
+    uae_u8 bitpos[16];
     unsigned int mask;
     int cpulevel;
+	int unimpcpulevel;
     int plevel;
     struct {
 	unsigned int flaguse:3;
 	unsigned int flagset:3;
     } flaginfo[5];
     unsigned char cflow;
-    unsigned char sduse;
-    const char *opcstr;
+    uae_u8 sduse;
+    const TCHAR *opcstr;
+	// 68020/030 timing
+	int head, tail, clocks, fetchmode;
 };
 
 extern struct instr_def defs68k[];
@@ -100,15 +110,16 @@ extern struct instr {
     unsigned int cc:4;
     unsigned int plev:2;
     unsigned int size:2;
+		unsigned int unsized:1;
     unsigned int smode:5;
     unsigned int stype:3;
     unsigned int dmode:5;
     unsigned int suse:1;
     unsigned int duse:1;
-    unsigned int unused1:1;
-    unsigned int clev:3;
+    unsigned int clev:3, unimpclev:3;
     unsigned int cflow:3;
-    unsigned int unused2:2;
+    unsigned int unused3:7;
+	char head, tail, clocks, fetchmode;
 } *table68k;
 
 extern void read_table68k (void);
@@ -116,3 +127,4 @@ extern void do_merges (void);
 extern int get_no_mismatches (void);
 extern int nr_cpuop_funcs;
 
+#endif /* UAE_READCPU_H */

@@ -7,11 +7,15 @@
   * Copyright 1997 Bernd Schmidt
   */
 
+#ifndef UAE_GENSOUND_H
+#define UAE_GENSOUND_H
+
 extern int sound_available;
 
 extern void (*sample_handler) (void);
-
-extern unsigned long sample_evtime, scaled_sample_evtime;
+/* sample_evtime is in normal Amiga cycles; scaled_sample_evtime is in our
+   event cycles. */
+extern unsigned long scaled_sample_evtime;
 
 /* Determine if we can produce any sound at all.  This can be only a guess;
  * if unsure, say yes.  Any call to init_sound may change the value.  */
@@ -22,5 +26,5 @@ extern void close_sound (void);
 
 extern void sample16_handler (void);
 extern void sample16s_handler (void);
-extern void init_sound_table16 (void);
 
+#endif /* UAE_GENSOUND_H */

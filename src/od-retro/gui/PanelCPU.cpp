@@ -10,9 +10,10 @@
 #include "sysdeps.h"
 #include "config.h"
 #include "options.h"
+#include "memory.h"
+#include "newcpu.h"
 #include "uae.h"
 #include "gui.h"
-#include "target.h"
 #include "gui_handling.h"
 
 
@@ -30,6 +31,8 @@ static gcn::UaeRadioButton* optFPUnone;
 static gcn::UaeRadioButton* optFPU68881;
 static gcn::UaeRadioButton* optFPU68882;
 static gcn::UaeRadioButton* optFPUinternal;
+static gcn::UaeCheckBox* chkFPUstrict;
+static gcn::UaeCheckBox* chkFPUJIT;
 static gcn::Window *grpCPUSpeed;
 static gcn::UaeRadioButton* opt7Mhz;
 static gcn::UaeRadioButton* opt14Mhz;
@@ -47,17 +50,16 @@ class CPUButtonActionListener : public gcn::ActionListener
   		  changed_prefs.cpu_model = 68000;
   		  changed_prefs.fpu_model = 0;
   		  changed_prefs.address_space_24 = true;
-  		  changed_prefs.z3fastmem_size = 0;
-  		  changed_prefs.gfxmem_size = 0;
+  		  changed_prefs.z3fastmem[0].size = 0;
+  		  changed_prefs.rtgboards[0].rtgmem_size = 0;
       }
       else if (actionEvent.getSource() == optCPU68010)
       {
   		  changed_prefs.cpu_model = 68010;
   		  changed_prefs.fpu_model = 0;
   		  changed_prefs.address_space_24 = true;
-  		  changed_prefs.z3fastmem_size = 0;
-  		  changed_prefs.gfxmem_size = 0;
-  		  changed_prefs.cpu_compatible = 0;
+  		  changed_prefs.z3fastmem[0].size = 0;
+  		  changed_prefs.rtgboards[0].rtgmem_size = 0;
       }
       else if (actionEvent.getSource() == optCPU68020)
       {
@@ -170,19 +172,39 @@ class JITActionListener : public gcn::ActionListener
   public:
     void action(const gcn::ActionEvent& actionEvent)
     {
-	    if (chkJIT->isSelected())
-      {
-	      changed_prefs.cpu_compatible = 0;
-	      changed_prefs.cachesize = DEFAULT_JIT_CACHE_SIZE;
-      }
-      else
-      {
-	      changed_prefs.cachesize = 0;
-      }
+	    if (actionEvent.getSource() == chkJIT) {
+		    if (chkJIT->isSelected())
+	      {
+		      changed_prefs.cpu_compatible = 0;
+		      changed_prefs.cachesize = MAX_JIT_CACHE;
+		      changed_prefs.compfpu = true;
+	      }
+	      else
+	      {
+		      changed_prefs.cachesize = 0;
+		      changed_prefs.compfpu = false;
+	      }
+	    } else if (actionEvent.getSource() == chkFPUJIT) {
+	      changed_prefs.compfpu = chkFPUJIT->isSelected();
+	    }
       RefreshPanelCPU();
     }
 };
 static JITActionListener* jitActionListener;
+
+
+class FPUActionListener : public gcn::ActionListener
+{
+  public:
+    void action(const gcn::ActionEvent& actionEvent)
+    {
+      if (actionEvent.getSource() == chkFPUstrict) {
+        changed_prefs.fpu_strict = chkFPUstrict->isSelected();
+      }
+      RefreshPanelCPU();
+    }
+};
+static FPUActionListener* fpuActionListener;
 
 
 void InitPanelCPU(const struct _ConfigCategory& category)
@@ -191,6 +213,7 @@ void InitPanelCPU(const struct _ConfigCategory& category)
   cpu24BitActionListener = new CPU24BitActionListener();
   cpuCompActionListener = new CPUCompActionListener();
   jitActionListener = new JITActionListener();
+  fpuActionListener = new FPUActionListener();
   
 	optCPU68000 = new gcn::UaeRadioButton("68000", "radiocpugroup");
 	optCPU68000->addActionListener(cpuButtonActionListener);
@@ -246,14 +269,24 @@ void InitPanelCPU(const struct _ConfigCategory& category)
 	optFPUinternal = new gcn::UaeRadioButton("CPU internal", "radiofpugroup");
 	optFPUinternal->addActionListener(fpuButtonActionListener);
 
+	chkFPUstrict = new gcn::UaeCheckBox("More compatible", true);
+	chkFPUstrict->setId("FPUstrict");
+  chkFPUstrict->addActionListener(fpuActionListener);
+
+	chkFPUJIT = new gcn::UaeCheckBox("FPU JIT", true);
+	chkFPUJIT->setId("FPUJIT");
+  chkFPUJIT->addActionListener(jitActionListener);
+
 	grpFPU = new gcn::Window("FPU");
 	grpFPU->setPosition(DISTANCE_BORDER + grpCPU->getWidth() + DISTANCE_NEXT_X, DISTANCE_BORDER);
 	grpFPU->add(optFPUnone,  5, 10);
 	grpFPU->add(optFPU68881, 5, 40);
 	grpFPU->add(optFPU68882, 5, 70);
 	grpFPU->add(optFPUinternal, 5, 100);
+	grpFPU->add(chkFPUstrict, 5, 140);
+	grpFPU->add(chkFPUJIT, 5, 170);
 	grpFPU->setMovable(false);
-	grpFPU->setSize(140, 145);
+	grpFPU->setSize(180, 215);
   grpFPU->setBaseColor(gui_baseCol);
   
   category.panel->add(grpFPU);
@@ -303,13 +336,16 @@ void ExitPanelCPU(void)
   delete cpu24BitActionListener;
   delete cpuCompActionListener;
   delete jitActionListener;
-
+  
   delete optFPUnone;
   delete optFPU68881;
   delete optFPU68882;
   delete optFPUinternal;
+  delete chkFPUstrict;
+  delete chkFPUJIT;
   delete grpFPU;
   delete fpuButtonActionListener;
+  delete fpuActionListener;
   
   delete opt7Mhz;
   delete opt14Mhz;
@@ -336,7 +372,7 @@ void RefreshPanelCPU(void)
   chk24Bit->setSelected(changed_prefs.address_space_24);
   chk24Bit->setEnabled(changed_prefs.cpu_model == 68020);
   chkCPUCompatible->setSelected(changed_prefs.cpu_compatible > 0);
-  chkCPUCompatible->setEnabled(changed_prefs.cpu_model == 68000);
+  chkCPUCompatible->setEnabled(changed_prefs.cpu_model <= 68010);
   chkJIT->setSelected(changed_prefs.cachesize > 0);
 
   switch(changed_prefs.fpu_model)
@@ -358,6 +394,15 @@ void RefreshPanelCPU(void)
   optFPU68882->setEnabled(changed_prefs.cpu_model >= 68020 && changed_prefs.cpu_model < 68040);
   optFPUinternal->setEnabled(changed_prefs.cpu_model == 68040);
   
+  chkFPUstrict->setSelected(changed_prefs.fpu_strict);
+#ifdef USE_JIT_FPU
+  chkFPUJIT->setSelected(changed_prefs.compfpu);
+  chkFPUJIT->setEnabled(changed_prefs.cachesize > 0);
+#else
+  chkFPUJIT->setSelected(false);
+  chkFPUJIT->setEnabled(false);
+#endif
+  
 	if (changed_prefs.m68k_speed == M68K_SPEED_7MHZ_CYCLES)
     opt7Mhz->setSelected(true);
   else if (changed_prefs.m68k_speed == M68K_SPEED_14MHZ_CYCLES)
@@ -367,3 +412,26 @@ void RefreshPanelCPU(void)
   else if (changed_prefs.m68k_speed == -1)
     optFastest->setSelected(true);
 }
+
+
+bool HelpPanelCPU(std::vector<std::string> &helptext)
+{
+  helptext.clear();
+  helptext.push_back("Select the required Amiga CPU (68000 - 68040).");
+  helptext.push_back("If you select 68020, you can choose between 24-bit addressing (68EC020) or 32-bit addressing (68020).");
+  helptext.push_back("The option \"More compatible\" is only available if 68000 or 68010 is selected and emulates simple prefetch of");
+  helptext.push_back("the 68000. This may improve compatibility in few situations but is not required for most games and demos.");
+  helptext.push_back("");
+  helptext.push_back("JIT enables the Just-in-time compiler. This may breaks compatibility in some games.");
+  helptext.push_back("");
+  helptext.push_back("The available FPU models depending on the selected CPU.");
+  helptext.push_back("The option \"More compatible\" activates more accurate rounding and compare of two floats.");
+  helptext.push_back("");
+  helptext.push_back("With \"CPU Speed\" you can choose the clock rate of the Amiga.");
+  helptext.push_back("");
+  helptext.push_back("In current version, you will not see a difference in the performance for 68020, 68030 and 68040 CPUs. The cpu");
+  helptext.push_back("cycles for the opcodes are based on 68020. The different cycles for 68030 and 68040 may come in a later");
+  helptext.push_back("version.");
+  return true;
+}
+  

@@ -1,20 +1,49 @@
+<<<<<<< HEAD
 # uae4arm-libretro
 
 Basic port. Based on rtype version.
+=======
+# uae4arm-rpi
+Port of uae4arm on Raspberry Pi
 
-## Controls
+How to compile for raspberry:
 
-|RetroPad button|Action|
-|---|---|
-|B|Fire button 1 / Red|
-|A|Fire button 2 / Blue|
-|L2|Left mouse button|
-|R2|Right mouse button|
-|Select|Toggle virtual keyboard|
-|Start|Toggle mouse emulation|
+   Retrieve the source of this emulator:
 
-Right analog stick controls the mouse.
+      git clone https://github.com/Chips-fr/uae4arm-rpi
+      cd uae4arm-rpi
 
-In mouse emulation dpad and fire buttons controls the mouse.
+   Install following packages:
 
-Two joysticks support. Switch automatically between mouse or second joystick when a mouse or joystick button is pressed.
+      sudo apt-get install libsdl1.2-dev 
+      sudo apt-get install libguichan-dev
+      sudo apt-get install libsdl-ttf2.0-dev
+      sudo apt-get install libsdl-gfx1.2-dev
+      sudo apt-get install libxml2-dev
+      sudo apt-get install libflac-dev
+      sudo apt-get install libmpg123-dev
+      sudo apt-get install libmpeg2-4-dev
+      sudo apt-get install autoconf
+
+   Then for Raspberry Pi 2 & 3:  
+
+      make
+
+   Or for Raspberry Pi 1:  
+
+      make PLATFORM=rpi1
+
+For all ARM boards with OpenGLES:
+
+   Install same packages as for raspberry.
+
+   Install development package for your OpenGLES board.
+
+   Ex for Mali:
+
+      sudo apt-get install libmali-sunxi-dev
+
+   Then compile the OpenGLES target:
+
+      make PLATFORM=gles
+>>>>>>> upstream/master

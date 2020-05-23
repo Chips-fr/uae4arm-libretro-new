@@ -16,18 +16,28 @@
 #include "autoconf.h"
 #include "filesys.h"
 #include "gui.h"
-#include "target.h"
 #include "gui_handling.h"
 
 
 #define DIALOG_WIDTH 620
-#define DIALOG_HEIGHT 242
+#define DIALOG_HEIGHT 272
 
 static const char *harddisk_filter[] = { ".hdf", "\0" };
+
+struct controller_map {
+  int type;
+  char display[64];
+};
+static struct controller_map controller[] = {
+  { HD_CONTROLLER_TYPE_UAE,     "UAE" },
+  { HD_CONTROLLER_TYPE_IDE_FIRST,  "A600/A1200/A4000 IDE" },
+  { -1 }
+};
 
 static bool dialogResult = false;
 static bool dialogFinished = false;
 static bool fileSelected = false;
+
 
 static gcn::Window *wndEditFilesysHardfile;
 static gcn::Button* cmdOK;
@@ -49,6 +59,73 @@ static gcn::Label *lblSectors;
 static gcn::TextField *txtSectors;
 static gcn::Label *lblBlocksize;
 static gcn::TextField *txtBlocksize;
+static gcn::Label *lblController;
+static gcn::UaeDropDown* cboController;
+static gcn::UaeDropDown* cboUnit;
+
+
+static void check_rdb(const TCHAR *filename)
+{
+  bool isrdb = hardfile_testrdb(filename);
+  if(isrdb)
+  {
+		txtSectors->setText("0");
+		txtSurfaces->setText("0");
+		txtReserved->setText("0");
+		txtBootPri->setText("0");
+  }
+  txtSectors->setEnabled(!isrdb);
+	txtSurfaces->setEnabled(!isrdb);
+	txtReserved->setEnabled(!isrdb);
+	txtBootPri->setEnabled(!isrdb);
+}
+
+
+class ControllerListModel : public gcn::ListModel
+{
+  public:
+    ControllerListModel()
+    {
+    }
+    
+    int getNumberOfElements()
+    {
+      return 2;
+    }
+
+    std::string getElementAt(int i)
+    {
+      if(i < 0 || i >= 2)
+        return "---";
+      return controller[i].display;
+    }
+};
+static ControllerListModel controllerListModel;
+
+
+class UnitListModel : public gcn::ListModel
+{
+  public:
+    UnitListModel()
+    {
+    }
+    
+    int getNumberOfElements()
+    {
+      return 4;
+    }
+
+    std::string getElementAt(int i)
+    {
+      char num[8];
+      
+      if(i < 0 || i >= 4)
+        return "---";
+      snprintf(num, 8, "%d", i);
+      return num;
+    }
+};
+static UnitListModel unitListModel;
 
 
 class FilesysHardfileActionListener : public gcn::ActionListener
@@ -56,8 +133,7 @@ class FilesysHardfileActionListener : public gcn::ActionListener
   public:
     void action(const gcn::ActionEvent& actionEvent)
     {
-      if(actionEvent.getSource() == cmdPath)
-      {
+      if(actionEvent.getSource() == cmdPath) {
         char tmp[MAX_PATH];
         strncpy(tmp, txtPath->getText().c_str(), MAX_PATH);
         wndEditFilesysHardfile->releaseModalFocus();
@@ -65,12 +141,23 @@ class FilesysHardfileActionListener : public gcn::ActionListener
         {
           txtPath->setText(tmp);
           fileSelected = true;
+          check_rdb(tmp);
         }
         wndEditFilesysHardfile->requestModalFocus();
         cmdPath->requestFocus();
-      }
-      else
-      {
+
+      } else if(actionEvent.getSource() == cboController) {
+        switch(controller[cboController->getSelected()].type) {
+          case HD_CONTROLLER_TYPE_UAE:
+            cboUnit->setSelected(0);
+            cboUnit->setEnabled(false);
+            break;
+          default:
+            cboUnit->setEnabled(true);
+            break;
+        }
+
+      } else {
         if (actionEvent.getSource() == cmdOK)
         {
           if(txtDevice->getText().length() <= 0)
@@ -94,6 +181,18 @@ static FilesysHardfileActionListener* filesysHardfileActionListener;
 
 static void InitEditFilesysHardfile(void)
 {
+	for (int i = 0; expansionroms[i].name; i++) {
+		const struct expansionromtype *erc = &expansionroms[i];
+		if (erc->deviceflags & EXPANSIONTYPE_IDE) {
+		  for (int j = 0; controller[j].type >= 0; ++j) {
+		    if(!strcmp(erc->friendlyname, controller[j].display)) {
+		      controller[j].type = HD_CONTROLLER_TYPE_IDE_EXPANSION_FIRST + i;
+		      break;
+		    }
+		  }   
+		}
+	}
+	
   wndEditFilesysHardfile = new gcn::Window("Edit");
   wndEditFilesysHardfile->setSize(DIALOG_WIDTH, DIALOG_HEIGHT);
   wndEditFilesysHardfile->setPosition((GUI_WIDTH - DIALOG_WIDTH) / 2, (GUI_HEIGHT - DIALOG_HEIGHT) / 2);
@@ -177,6 +276,19 @@ static void InitEditFilesysHardfile(void)
   cmdPath->setId("hdfPath");
   cmdPath->addActionListener(filesysHardfileActionListener);
 
+  lblController = new gcn::Label("Controller:");
+  lblController->setSize(100, LABEL_HEIGHT);
+  lblController->setAlignment(gcn::Graphics::RIGHT);
+	cboController = new gcn::UaeDropDown(&controllerListModel);
+  cboController->setSize(180, DROPDOWN_HEIGHT);
+  cboController->setBaseColor(gui_baseCol);
+  cboController->setId("hdfController");
+  cboController->addActionListener(filesysHardfileActionListener);
+	cboUnit = new gcn::UaeDropDown(&unitListModel);
+  cboUnit->setSize(60, DROPDOWN_HEIGHT);
+  cboUnit->setBaseColor(gui_baseCol);
+  cboUnit->setId("hdfUnit");
+
   int posY = DISTANCE_BORDER;
   wndEditFilesysHardfile->add(lblDevice, DISTANCE_BORDER, posY);
   wndEditFilesysHardfile->add(txtDevice, DISTANCE_BORDER + lblDevice->getWidth() + 8, posY);
@@ -199,6 +311,10 @@ static void InitEditFilesysHardfile(void)
   wndEditFilesysHardfile->add(lblBlocksize, 240, posY);
   wndEditFilesysHardfile->add(txtBlocksize, 240 + lblBlocksize->getWidth() + 8, posY);
   posY += txtSectors->getHeight() + DISTANCE_NEXT_Y;
+  wndEditFilesysHardfile->add(lblController, DISTANCE_BORDER, posY);
+  wndEditFilesysHardfile->add(cboController, DISTANCE_BORDER + lblController->getWidth() + 8, posY);
+  wndEditFilesysHardfile->add(cboUnit, cboController->getX() + cboController->getWidth() + 8, posY);
+  posY += cboController->getHeight() + DISTANCE_NEXT_Y;
 
   wndEditFilesysHardfile->add(cmdOK);
   wndEditFilesysHardfile->add(cmdCancel);
@@ -232,6 +348,9 @@ static void ExitEditFilesysHardfile(void)
   delete txtSectors;
   delete lblBlocksize;
   delete txtBlocksize;
+  delete lblController;
+  delete cboController;
+  delete cboUnit;
     
   delete cmdOK;
   delete cmdCancel;
@@ -243,6 +362,8 @@ static void ExitEditFilesysHardfile(void)
 
 static void EditFilesysHardfileLoop(void)
 {
+  FocusBugWorkaround(wndEditFilesysHardfile);  
+
   while(!dialogFinished)
   {
     SDL_Event event;
@@ -252,32 +373,32 @@ static void EditFilesysHardfileLoop(void)
       {
         switch(event.key.keysym.sym)
         {
-          case SDLK_ESCAPE:
+          case VK_ESCAPE:
             dialogFinished = true;
             break;
             
-          case SDLK_UP:
+          case VK_UP:
             if(HandleNavigation(DIRECTION_UP))
               continue; // Don't change value when enter ComboBox -> don't send event to control
             break;
             
-          case SDLK_DOWN:
+          case VK_DOWN:
             if(HandleNavigation(DIRECTION_DOWN))
               continue; // Don't change value when enter ComboBox -> don't send event to control
             break;
 
-          case SDLK_LEFT:
+          case VK_LEFT:
             if(HandleNavigation(DIRECTION_LEFT))
               continue; // Don't change value when enter Slider -> don't send event to control
             break;
             
-          case SDLK_RIGHT:
+          case VK_RIGHT:
             if(HandleNavigation(DIRECTION_RIGHT))
               continue; // Don't change value when enter Slider -> don't send event to control
             break;
 
-          case SDLK_PAGEDOWN:
-          case SDLK_HOME:
+          case VK_X:
+          case VK_A:
             event.key.keysym.sym = SDLK_RETURN;
             gui_input->pushInput(event); // Fire key down
             event.type = SDL_KEYUP;  // and the key up
@@ -296,6 +417,7 @@ static void EditFilesysHardfileLoop(void)
     // Now we let the Gui object draw itself.
     uae_gui->draw();
     // Finally we update the screen.
+    wait_for_vsync();
     SDL_Flip(gui_screen);
   }  
 }
@@ -304,9 +426,10 @@ static void EditFilesysHardfileLoop(void)
 bool EditFilesysHardfile(int unit_no)
 {
   struct mountedinfo mi;
-  struct uaedev_config_info *uci = &changed_prefs.mountconfig[unit_no];
+  struct uaedev_config_data *uci;
   std::string strdevname, strroot;
   char tmp[32];
+  int i;
     
   dialogResult = false;
   dialogFinished = false;
@@ -315,25 +438,39 @@ bool EditFilesysHardfile(int unit_no)
 
   if(unit_no >= 0)
   {
+    struct uaedev_config_info *ci;
+
+    uci = &changed_prefs.mountconfig[unit_no];
+    ci = &uci->ci;
     get_filesys_unitconfig(&changed_prefs, unit_no, &mi);
-    strdevname.assign(uci->devname);
+
+    strdevname.assign(ci->devname);
     txtDevice->setText(strdevname);
-    strroot.assign(uci->rootdir);
+    strroot.assign(ci->rootdir);
     txtPath->setText(strroot);
     fileSelected = true;
 
-    chkReadWrite->setSelected(!uci->readonly);
-    chkAutoboot->setSelected(uci->bootpri != -128);
-    snprintf(tmp, 32, "%d", uci->bootpri >= -127 ? uci->bootpri : -127);
+    chkReadWrite->setSelected(!ci->readonly);
+    chkAutoboot->setSelected(ci->bootpri != BOOTPRI_NOAUTOBOOT);
+    snprintf(tmp, 32, "%d", ci->bootpri >= -127 ? ci->bootpri : -127);
     txtBootPri->setText(tmp);
-    snprintf(tmp, 32, "%d", uci->surfaces);
+    snprintf(tmp, 32, "%d", ci->surfaces);
     txtSurfaces->setText(tmp);
-    snprintf(tmp, 32, "%d", uci->reserved);
+    snprintf(tmp, 32, "%d", ci->reserved);
     txtReserved->setText(tmp);
-    snprintf(tmp, 32, "%d", uci->sectors);
+    snprintf(tmp, 32, "%d", ci->sectors);
     txtSectors->setText(tmp);
-    snprintf(tmp, 32, "%d", uci->blocksize);
+    snprintf(tmp, 32, "%d", ci->blocksize);
     txtBlocksize->setText(tmp);
+    int selIndex = 0;
+    for(i = 0; i < 2; ++i) {
+      if(controller[i].type == ci->controller_type)
+        selIndex = i;
+    }
+    cboController->setSelected(selIndex);
+    cboUnit->setSelected(ci->controller_unit);
+    
+    check_rdb(strroot.c_str());
   }
   else
   {
@@ -349,21 +486,47 @@ bool EditFilesysHardfile(int unit_no)
     txtReserved->setText("2");
     txtSectors->setText("32");
     txtBlocksize->setText("512");
+    cboController->setSelected(0);
+    cboUnit->setSelected(0);
   }
+
   EditFilesysHardfileLoop();
-  ExitEditFilesysHardfile();
+  
   if(dialogResult)
   {
+    struct uaedev_config_info ci;
     int bp = tweakbootpri(atoi(txtBootPri->getText().c_str()), chkAutoboot->isSelected() ? 1 : 0, 0);
     extractPath((char *) txtPath->getText().c_str(), currentDir);
+
+    uci_set_defaults(&ci, false);
+    strncpy(ci.devname, (char *) txtDevice->getText().c_str(), MAX_DPATH);
+    strncpy(ci.rootdir, (char *) txtPath->getText().c_str(), MAX_DPATH);
+    ci.type = UAEDEV_HDF;
+    ci.controller_type = controller[cboController->getSelected()].type;
+    ci.controller_type_unit = 0;
+    ci.controller_unit = cboUnit->getSelected();
+    ci.controller_media_type = 0;
+    ci.unit_feature_level = 1;
+    ci.unit_special_flags = 0;
+    ci.readonly = !chkReadWrite->isSelected();
+    ci.sectors = atoi(txtSectors->getText().c_str());
+    ci.surfaces = atoi(txtSurfaces->getText().c_str());
+    ci.reserved = atoi(txtReserved->getText().c_str());
+    ci.blocksize = atoi(txtBlocksize->getText().c_str());
+    ci.bootpri = bp;
+    ci.physical_geometry = hardfile_testrdb(ci.rootdir);
     
-    uci = add_filesys_config(&changed_prefs, unit_no, (char *) txtDevice->getText().c_str(), 
-      0, (char *) txtPath->getText().c_str(), !chkReadWrite->isSelected(), 
-      atoi(txtSectors->getText().c_str()), atoi(txtSurfaces->getText().c_str()), 
-      atoi(txtReserved->getText().c_str()), atoi(txtBlocksize->getText().c_str()), 
-      bp, 0, 0, 0);
-    if (uci)
-    	hardfile_do_disk_change (uci, 1);
+    uci = add_filesys_config(&changed_prefs, unit_no, &ci);
+    if (uci) {
+  		struct hardfiledata *hfd = get_hardfile_data (uci->configoffset);
+  		if(hfd)
+        hardfile_media_change (hfd, &ci, true, false);
+      else
+        hardfile_added(&ci);
+    }
   }
+
+  ExitEditFilesysHardfile();
+
   return dialogResult;
 }

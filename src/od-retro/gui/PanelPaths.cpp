@@ -10,7 +10,6 @@
 #include "options.h"
 #include "uae.h"
 #include "gui.h"
-#include "target.h"
 #include "gui_handling.h"
 
 static gcn::Label *lblSystemROMs;
@@ -147,4 +146,16 @@ void RefreshPanelPaths(void)
   
   fetch_configurationpath(tmp, MAX_PATH);
   txtConfigPath->setText(tmp);
+}
+
+
+bool HelpPanelPaths(std::vector<std::string> &helptext)
+{
+  helptext.clear();
+  helptext.push_back("Specify the location of your kickstart roms and the folder where the configurations files should be stored.");
+  helptext.push_back("With the button \"...\" you can open a dialog to choose the folder.");
+  helptext.push_back("");
+  helptext.push_back("After changing the location of the kickstart roms, click on \"Rescan ROMS\" to refresh the list of the available");
+  helptext.push_back("ROMs.");
+  return true;
 }

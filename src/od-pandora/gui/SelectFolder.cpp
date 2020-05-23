@@ -79,18 +79,18 @@ static DirListModel dirList(".");
 static void checkfoldername (char *current)
 {
 	char *ptr;
-	char actualpath [PATH_MAX];
+	char actualpath [MAX_PATH];
 	DIR *dir;
 	
 	if (dir = opendir(current))
 	{ 
 	  dirList = current;
 	  ptr = realpath(current, actualpath);
-	  strcpy(workingDir, ptr);
+	  strncpy(workingDir, ptr, MAX_PATH);
 	  closedir(dir);
 	}
   else
-    strcpy(workingDir, start_path_data);
+    strncpy(workingDir, start_path_data, MAX_PATH);
   txtCurrent->setText(workingDir);
 }
 
@@ -101,12 +101,12 @@ class ListBoxActionListener : public gcn::ActionListener
     void action(const gcn::ActionEvent& actionEvent)
     {
       int selected_item;
-      char foldername[256] = "";
+      char foldername[MAX_PATH] = "";
 
       selected_item = lstFolders->getSelected();
-      strcpy(foldername, workingDir);
-      strcat(foldername, "/");
-      strcat(foldername, dirList.getElementAt(selected_item).c_str());
+      strncpy(foldername, workingDir, MAX_PATH - 1);
+      strncat(foldername, "/", MAX_PATH - 1);
+      strncat(foldername, dirList.getElementAt(selected_item).c_str(), MAX_PATH - 1);
       checkfoldername(foldername);
     }
 };
@@ -189,6 +189,8 @@ static void ExitSelectFolder(void)
 
 static void SelectFolderLoop(void)
 {
+  FocusBugWorkaround(wndSelectFolder);  
+
   while(!dialogFinished)
   {
     SDL_Event event;
@@ -198,11 +200,11 @@ static void SelectFolderLoop(void)
       {
         switch(event.key.keysym.sym)
         {
-          case SDLK_ESCAPE:
+          case VK_ESCAPE:
             dialogFinished = true;
             break;
             
-          case SDLK_LEFT:
+          case VK_LEFT:
             {
               gcn::FocusHandler* focusHdl = gui_top->_getFocusHandler();
               gcn::Widget* activeWidget = focusHdl->getFocused();
@@ -216,7 +218,7 @@ static void SelectFolderLoop(void)
             }
             break;
             
-          case SDLK_RIGHT:
+          case VK_RIGHT:
             {
               gcn::FocusHandler* focusHdl = gui_top->_getFocusHandler();
               gcn::Widget* activeWidget = focusHdl->getFocused();
@@ -230,8 +232,8 @@ static void SelectFolderLoop(void)
             }
             break;
 
-          case SDLK_PAGEDOWN:
-          case SDLK_HOME:
+          case VK_X:
+          case VK_A:
             event.key.keysym.sym = SDLK_RETURN;
             gui_input->pushInput(event); // Fire key down
             event.type = SDL_KEYUP;  // and the key up
@@ -250,6 +252,7 @@ static void SelectFolderLoop(void)
     // Now we let the Gui object draw itself.
     uae_gui->draw();
     // Finally we update the screen.
+    wait_for_vsync();
     SDL_Flip(gui_screen);
   }  
 }
@@ -267,7 +270,7 @@ bool SelectFolder(const char *title, char *value)
   {
     strncpy(value, workingDir, MAX_PATH);
     if(value[strlen(value) - 1] != '/')
-      strcat(value, "/");
+      strncat(value, "/", MAX_PATH);
   }
   return dialogResult;
 }

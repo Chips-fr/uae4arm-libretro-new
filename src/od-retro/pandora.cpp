@@ -13,66 +13,82 @@
 #include <asm/sigcontext.h>
 #include <signal.h>
 #include <dlfcn.h>
-//#include <execinfo.h>
+#include <execinfo.h>
 #include "sysconfig.h"
 #include "sysdeps.h"
 #include "config.h"
-#include "autoconf.h"
 #include "uae.h"
 #include "options.h"
 #include "td-sdl/thread.h"
 #include "gui.h"
-#include "events.h"
 #include "memory.h"
+#include "inputdevice.h"
+#include "keyboard.h"
+#include "disk.h"
+#include "savestate.h"
+#include "rtgmodes.h"
+#include "rommgr.h"
+#include "zfile.h"
+#include "gfxboard.h"
+#include <SDL.h>
+#include "pandora_rp9.h"
+
+// Temporary reintroduce reinit_amiga
+#include "newcpu.h"
 #include "custom.h"
 #include "xwin.h"
 #include "drawing.h"
-#include "inputdevice.h"
+#include "autoconf.h"
+#include "custom.h"
 #include "keybuf.h"
-#include "keyboard.h"
-#include "joystick.h"
-#include "disk.h"
-#include "savestate.h"
-#include "newcpu.h"
-#include "traps.h"
+#include "bsdsocket.h"
+#include "blkdev.h"
 #include "native2amiga.h"
-#include "rtgmodes.h"
 #include "uaeresource.h"
-#include "gp2x.h"
-#include "zfile.h"
+#include "akiko.h"
+// Temporary reintroduce reinit_amiga
+
+#ifdef WITH_LOGGING
+extern FILE *debugfile;
+#endif
+
+int quickstart_start = 1;
+int quickstart_model = 0;
+int quickstart_conf = 0;
 
 extern void signal_segv(int signum, siginfo_t* info, void*ptr);
+extern void signal_buserror(int signum, siginfo_t* info, void*ptr);
+extern void signal_term(int signum, siginfo_t* info, void*ptr);
+extern void gui_force_rtarea_hdchange(void);
 
-extern int doStylusRightClick;
-extern int mouseMoving;
-extern int justClicked;
-extern int fcounter;
+static int delayed_mousebutton = 0;
+static int doStylusRightClick;
 
-extern int keycode2amiga(int prKeySym);
-extern int loadconfig_old(struct uae_prefs *p, const char *orgpath);
 extern void SetLastActiveConfig(const char *filename);
 
-/* Keyboard and mouse */
 /* Keyboard */
-int uae4all_keystate[256];
-#ifdef PANDORA
-static int shiftWasPressed = 0;
-#endif
+int customControlMap[320/*SDLK_LAST*/];
 
 char start_path_data[MAX_DPATH];
 char currentDir[MAX_DPATH];
-int show_inputmode = 0;
-
-int sleep_resolution = 1000 / 1;
+#ifdef CAPSLOCK_DEBIAN_WORKAROUND
+  #include <linux/kd.h>
+  #include <sys/ioctl.h>
+  unsigned char kbd_led_status;
+  char kbd_flags;
+#endif
 
 static char config_path[MAX_DPATH];
 static char rom_path[MAX_DPATH];
+static char rp9_path[MAX_DPATH];
 char last_loaded_config[MAX_DPATH] = { '\0' };
-
-static bool slow_mouse = false;
 
 static bool cpuSpeedChanged = false;
 static int lastCpuSpeed = 600;
+int defaultCpuSpeed = 600;
+
+int max_uae_width;
+int max_uae_height;
 
 
 extern "C" int skel_umain( int argc, char *argv[] );
@@ -82,18 +98,34 @@ void reinit_amiga(void)
 {
   write_log("reinit_amiga() called\n");
   DISK_free ();
-  memory_cleanup ();
+#ifdef CD32
+	akiko_free ();
+#endif
 #ifdef FILESYS
   filesys_cleanup ();
+  hardfile_reset();
 #endif
 #ifdef AUTOCONFIG
+#if defined (BSDSOCKET)
+  bsdlib_reset();
+#endif
   expansion_cleanup ();
 #endif
+	device_func_reset ();
+  memory_cleanup ();
   
+  /* At this point, there might run some threads from bsdsocket.*/
+//  write_log("Threads in reinit_amiga():\n");
+//  dbg_list_threads();
+
+  init_mem_banks ();
+
   currprefs = changed_prefs;
   /* force sound settings change */
   currprefs.produce_sound = 0;
 
+  HandleA3000Mem(currprefs.mbresmem_low_size, currprefs.mbresmem_high_size);
+  
   framecnt = 1;
 #ifdef AUTOCONFIG
   rtarea_setup ();
@@ -103,6 +135,7 @@ void reinit_amiga(void)
   uaeres_install ();
   hardfile_install();
 #endif
+  keybuf_init();
 
 #ifdef AUTOCONFIG
   expansion_init ();
@@ -114,6 +147,9 @@ void reinit_amiga(void)
   memory_reset ();
 
 #ifdef AUTOCONFIG
+#if defined (BSDSOCKET)
+	bsdlib_install ();
+#endif
   emulib_install ();
   native2amiga_install ();
 #endif
@@ -121,6 +157,7 @@ void reinit_amiga(void)
   custom_init (); /* Must come after memory_init */
   DISK_init ();
   
+  reset_frame_rate_hack ();
   init_m68k();
 }
 
@@ -130,9 +167,12 @@ void sleep_millis (int ms)
   usleep(ms * 1000);
 }
 
-void sleep_millis_busy (int ms)
+int sleep_millis_main (int ms)
 {
+	unsigned long start = read_processor_time ();
   usleep(ms * 1000);
+  idletime += read_processor_time () - start;
+  return 0;
 }
 
 
@@ -153,12 +193,12 @@ void logging_init( void )
     debugfile = 0;
   }
 
-	sprintf(debugfilename, "%s/uae4all_log.txt", start_path_data);
-	if(!debugfile)
+    sprintf(debugfilename, "%s/uae4arm_log.txt", start_path_data);
+    if(!debugfile)
     debugfile = fopen(debugfilename, "wt");
 
   first++;
-  write_log ( "UAE4ALL Logfile\n\n");
+  write_log ( "UAE4ARM Logfile\n\n");
 #endif
 }
 
@@ -172,113 +212,215 @@ void logging_cleanup( void )
 }
 
 
-uae_u8 *target_load_keyfile (struct uae_prefs *p, char *path, int *sizep, char *name)
+void stripslashes (TCHAR *p)
+{
+	while (_tcslen (p) > 0 && (p[_tcslen (p) - 1] == '\\' || p[_tcslen (p) - 1] == '/'))
+		p[_tcslen (p) - 1] = 0;
+}
+void fixtrailing (TCHAR *p)
+{
+	if (_tcslen(p) == 0)
+		return;
+	if (p[_tcslen(p) - 1] == '/' || p[_tcslen(p) - 1] == '\\')
+		return;
+	_tcscat(p, "/");
+}
+
+void getpathpart (TCHAR *outpath, int size, const TCHAR *inpath)
+{
+	_tcscpy (outpath, inpath);
+	TCHAR *p = _tcsrchr (outpath, '/');
+	if (p)
+		p[0] = 0;
+	fixtrailing (outpath);
+}
+void getfilepart (TCHAR *out, int size, const TCHAR *path)
+{
+	out[0] = 0;
+	const TCHAR *p = _tcsrchr (path, '/');
+	if (p)
+		_tcscpy (out, p + 1);
+	else
+		_tcscpy (out, path);
+}
+
+
+uae_u8 *target_load_keyfile (struct uae_prefs *p, const char *path, int *sizep, char *name)
 {
   return 0;
 }
 
+
+void target_run (void)
+{
+  // Reset counter for access violations
+  init_max_signals();
+}
 
 void target_quit (void)
 {
 }
 
 
+static void fix_apmodes(struct uae_prefs *p)
+{
+  if(p->ntscmode)
+  {
+    p->gfx_apmode[0].gfx_refreshrate = 60;
+    p->gfx_apmode[1].gfx_refreshrate = 60;
+  }  
+  else
+  {
+    p->gfx_apmode[0].gfx_refreshrate = 50;
+    p->gfx_apmode[1].gfx_refreshrate = 50;
+  }  
+
+  p->gfx_apmode[0].gfx_vsync = 2;
+  p->gfx_apmode[1].gfx_vsync = 2;
+  p->gfx_apmode[0].gfx_vflip = -1;
+  p->gfx_apmode[1].gfx_vflip = -1;
+  
+	fixup_prefs_dimensions (p);
+}
+
+
 void target_fixup_options (struct uae_prefs *p)
 {
+	p->rtgboards[0].rtgmem_type = GFXBOARD_UAE_Z3;
+
+	if(z3base_adr == Z3BASE_REAL) {
+  	// map Z3 memory at real address (0x40000000)
+  	p->z3_mapping_mode = Z3MAPPING_REAL;
+    p->z3autoconfig_start = z3base_adr;
+	} else {
+	  // map Z3 memory at UAE address (0x10000000)
+  	p->z3_mapping_mode = Z3MAPPING_UAE;
+    p->z3autoconfig_start = z3base_adr;
+	}
+
+  if(p->cs_cd32cd && p->cs_cd32nvram && (p->cs_compatible == CP_GENERIC || p->cs_compatible == 0)) {
+    // Old config without cs_compatible, but other cd32-flags
+    p->cs_compatible = CP_CD32;
+    built_in_chipset_prefs(p);
+  }
+
+  if(p->cs_cd32cd && p->cartfile[0]) {
+    p->cs_cd32fmv = 1;
+  }
+  
+	p->picasso96_modeflags = RGBFF_CLUT | RGBFF_R5G6B5 | RGBFF_R8G8B8A8;
+  p->gfx_resolution = p->gfx_size.width > 600 ? 1 : 0;
+  
+  if(p->cachesize > 0)
+    p->fpu_no_unimplemented = 0;
+  else
+    p->fpu_no_unimplemented = 1;
+  
+  fix_apmodes(p);
 }
 
 
 void target_default_options (struct uae_prefs *p, int type)
 {
-  p->pandora_horizontal_offset = 0;
-  p->pandora_vertical_offset = 0;
-  p->pandora_cpu_speed = 600;
-
-  p->pandora_joyConf = 0;
-  p->pandora_joyPort = 0;
-  p->pandora_tapDelay = 10;
-  p->pandora_stylusOffset = 0;
+  p->pandora_vertical_offset = OFFSET_Y_ADJUST;
+  p->pandora_cpu_speed = defaultCpuSpeed;
+  p->pandora_hide_idle_led = 0;
   
+  p->pandora_tapDelay = 10;
 	p->pandora_customControls = 0;
-#ifdef RASPBERRY
-	p->pandora_custom_dpad = 1;
-#else
-	p->pandora_custom_dpad = 0;
-#endif
-	p->pandora_custom_up = 0;
-	p->pandora_custom_down = 0;
-	p->pandora_custom_left = 0;
-	p->pandora_custom_right = 0;
-	p->pandora_custom_A = 0;
-	p->pandora_custom_B = 0;
-	p->pandora_custom_X = 0;
-	p->pandora_custom_Y = 0;
-	p->pandora_custom_L = 0;
-	p->pandora_custom_R = 0;
 
-	p->pandora_button1 = GP2X_BUTTON_X;
-	p->pandora_button2 = GP2X_BUTTON_A;
-	p->pandora_autofireButton1 = GP2X_BUTTON_B;
-	p->pandora_jump = -1;
+	p->picasso96_modeflags = RGBFF_CLUT | RGBFF_R5G6B5 | RGBFF_R8G8B8A8;
 	
-	p->picasso96_modeflags = RGBFF_R5G6B5 | RGBFF_R8G8B8A8;
+	memset(customControlMap, 0, sizeof(customControlMap));
+	
+	p->cr[CHIPSET_REFRESH_PAL].locked = true;
+	p->cr[CHIPSET_REFRESH_PAL].vsync = 1;
+
+	p->cr[CHIPSET_REFRESH_NTSC].locked = true;
+	p->cr[CHIPSET_REFRESH_NTSC].vsync = 1;
+	
+	p->cr[0].index = 0;
+	p->cr[0].horiz = -1;
+	p->cr[0].vert = -1;
+	p->cr[0].lace = -1;
+	p->cr[0].resolution = 0;
+	p->cr[0].vsync = -1;
+	p->cr[0].rate = 60.0;
+	p->cr[0].ntsc = 1;
+	p->cr[0].locked = true;
+	p->cr[0].rtg = true;
+	_tcscpy (p->cr[0].label, _T("RTG"));
 }
 
 
 void target_save_options (struct zfile *f, struct uae_prefs *p)
 {
-  cfgfile_write (f, "pandora.cpu_speed=%d\n", p->pandora_cpu_speed);
-  cfgfile_write (f, "pandora.joy_conf=%d\n", p->pandora_joyConf);
-  cfgfile_write (f, "pandora.joy_port=%d\n", p->pandora_joyPort);
-  cfgfile_write (f, "pandora.stylus_offset=%d\n", p->pandora_stylusOffset);
-  cfgfile_write (f, "pandora.tap_delay=%d\n", p->pandora_tapDelay);
-  cfgfile_write (f, "pandora.custom_controls=%d\n", p->pandora_customControls);
-  cfgfile_write (f, "pandora.custom_dpad=%d\n", p->pandora_custom_dpad);
-  cfgfile_write (f, "pandora.custom_up=%d\n", p->pandora_custom_up);
-  cfgfile_write (f, "pandora.custom_down=%d\n", p->pandora_custom_down);
-  cfgfile_write (f, "pandora.custom_left=%d\n", p->pandora_custom_left);
-  cfgfile_write (f, "pandora.custom_right=%d\n", p->pandora_custom_right);
-  cfgfile_write (f, "pandora.custom_a=%d\n", p->pandora_custom_A);
-  cfgfile_write (f, "pandora.custom_b=%d\n", p->pandora_custom_B);
-  cfgfile_write (f, "pandora.custom_x=%d\n", p->pandora_custom_X);
-  cfgfile_write (f, "pandora.custom_y=%d\n", p->pandora_custom_Y);
-  cfgfile_write (f, "pandora.custom_l=%d\n", p->pandora_custom_L);
-  cfgfile_write (f, "pandora.custom_r=%d\n", p->pandora_custom_R);
-  cfgfile_write (f, "pandora.move_x=%d\n", p->pandora_horizontal_offset);
-  cfgfile_write (f, "pandora.move_y=%d\n", p->pandora_vertical_offset);
-  cfgfile_write (f, "pandora.button1=%d\n", p->pandora_button1);
-  cfgfile_write (f, "pandora.button2=%d\n", p->pandora_button2);
-  cfgfile_write (f, "pandora.autofire_button=%d\n", p->pandora_autofireButton1);
-  cfgfile_write (f, "pandora.jump=%d\n", p->pandora_jump);
+  cfgfile_write (f, "pandora.cpu_speed", "%d", p->pandora_cpu_speed);
+  cfgfile_write (f, "pandora.hide_idle_led", "%d", p->pandora_hide_idle_led);
+  cfgfile_write (f, "pandora.tap_delay", "%d", p->pandora_tapDelay);
+  cfgfile_write (f, "pandora.custom_controls", "%d", p->pandora_customControls);
+  cfgfile_write (f, "pandora.custom_up", "%d", customControlMap[VK_UP]);
+  cfgfile_write (f, "pandora.custom_down", "%d", customControlMap[VK_DOWN]);
+  cfgfile_write (f, "pandora.custom_left", "%d", customControlMap[VK_LEFT]);
+  cfgfile_write (f, "pandora.custom_right", "%d", customControlMap[VK_RIGHT]);
+  cfgfile_write (f, "pandora.custom_a", "%d", customControlMap[VK_A]);
+  cfgfile_write (f, "pandora.custom_b", "%d", customControlMap[VK_B]);
+  cfgfile_write (f, "pandora.custom_x", "%d", customControlMap[VK_X]);
+  cfgfile_write (f, "pandora.custom_y", "%d", customControlMap[VK_Y]);
+  cfgfile_write (f, "pandora.custom_l", "%d", customControlMap[VK_L]);
+  cfgfile_write (f, "pandora.custom_r", "%d", customControlMap[VK_R]);
+  cfgfile_write (f, "pandora.move_y", "%d", p->pandora_vertical_offset - OFFSET_Y_ADJUST);
 }
 
 
-int target_parse_option (struct uae_prefs *p, char *option, char *value)
+void target_restart (void)
+{
+  emulating = 0;
+  gui_restart();
+}
+
+
+TCHAR *target_expand_environment (const TCHAR *path, TCHAR *out, int maxlen)
+{
+  if(out == NULL) {
+    return strdup(path);
+  } else {
+    _tcscpy(out, path);
+    return out;
+  }
+}
+
+int target_parse_option (struct uae_prefs *p, const char *option, const char *value)
 {
   int result = (cfgfile_intval (option, value, "cpu_speed", &p->pandora_cpu_speed, 1)
-    || cfgfile_intval (option, value, "joy_conf", &p->pandora_joyConf, 1)
-    || cfgfile_intval (option, value, "joy_port", &p->pandora_joyPort, 1)
-    || cfgfile_intval (option, value, "stylus_offset", &p->pandora_stylusOffset, 1)
+    || cfgfile_intval (option, value, "hide_idle_led", &p->pandora_hide_idle_led, 1)
     || cfgfile_intval (option, value, "tap_delay", &p->pandora_tapDelay, 1)
     || cfgfile_intval (option, value, "custom_controls", &p->pandora_customControls, 1)
-    || cfgfile_intval (option, value, "custom_dpad", &p->pandora_custom_dpad, 1)
-    || cfgfile_intval (option, value, "custom_up", &p->pandora_custom_up, 1)
-    || cfgfile_intval (option, value, "custom_down", &p->pandora_custom_down, 1)
-    || cfgfile_intval (option, value, "custom_left", &p->pandora_custom_left, 1)
-    || cfgfile_intval (option, value, "custom_right", &p->pandora_custom_right, 1)
-    || cfgfile_intval (option, value, "custom_a", &p->pandora_custom_A, 1)
-    || cfgfile_intval (option, value, "custom_b", &p->pandora_custom_B, 1)
-    || cfgfile_intval (option, value, "custom_x", &p->pandora_custom_X, 1)
-    || cfgfile_intval (option, value, "custom_y", &p->pandora_custom_Y, 1)
-    || cfgfile_intval (option, value, "custom_l", &p->pandora_custom_L, 1)
-    || cfgfile_intval (option, value, "custom_r", &p->pandora_custom_R, 1)
-    || cfgfile_intval (option, value, "move_x", &p->pandora_horizontal_offset, 1)
-    || cfgfile_intval (option, value, "move_y", &p->pandora_vertical_offset, 1)
-    || cfgfile_intval (option, value, "button1", &p->pandora_button1, 1)
-    || cfgfile_intval (option, value, "button2", &p->pandora_button2, 1)
-    || cfgfile_intval (option, value, "autofire_button", &p->pandora_autofireButton1, 1)
-    || cfgfile_intval (option, value, "jump", &p->pandora_jump, 1)
+    || cfgfile_intval (option, value, "custom_up", &customControlMap[VK_UP], 1)
+    || cfgfile_intval (option, value, "custom_down", &customControlMap[VK_DOWN], 1)
+    || cfgfile_intval (option, value, "custom_left", &customControlMap[VK_LEFT], 1)
+    || cfgfile_intval (option, value, "custom_right", &customControlMap[VK_RIGHT], 1)
+    || cfgfile_intval (option, value, "custom_a", &customControlMap[VK_A], 1)
+    || cfgfile_intval (option, value, "custom_b", &customControlMap[VK_B], 1)
+    || cfgfile_intval (option, value, "custom_x", &customControlMap[VK_X], 1)
+    || cfgfile_intval (option, value, "custom_y", &customControlMap[VK_Y], 1)
+    || cfgfile_intval (option, value, "custom_l", &customControlMap[VK_L], 1)
+    || cfgfile_intval (option, value, "custom_r", &customControlMap[VK_R], 1)
     );
+  if(!result) {
+    result = cfgfile_intval (option, value, "move_y", &p->pandora_vertical_offset, 1);
+    if(result)
+      p->pandora_vertical_offset += OFFSET_Y_ADJUST;
+  }
+
+  return result;
+}
+
+
+void fetch_datapath (char *out, int size)
+{
+  strncpy(out, start_path_data, size);
+  strncat(out, "/", size);
 }
 
 
@@ -313,6 +455,12 @@ void set_rompath(char *newpath)
 }
 
 
+void fetch_rp9path (char *out, int size)
+{
+  strncpy(out, rp9_path, size);
+}
+
+
 void fetch_savestatepath(char *out, int size)
 {
   strncpy(out, start_path_data, size);
@@ -327,44 +475,54 @@ void fetch_screenshotpath(char *out, int size)
 }
 
 
-int target_cfgfile_load (struct uae_prefs *p, char *filename, int type, int isdefault)
+int target_cfgfile_load (struct uae_prefs *p, const char *filename, int type, int isdefault)
 {
   int i;
   int result = 0;
 
-  filesys_prepare_reset();
-  while(p->mountitems > 0)
-    kill_filesys_unitconfig(p, 0);
-  discard_prefs(p, type);
+  write_log(_T("target_cfgfile_load(): load file %s\n"), filename);
   
-	char *ptr = strstr(filename, ".uae");
+  discard_prefs(p, type);
+  default_prefs(p, true, 0);
+  
+	char *ptr = strstr((char *)filename, ".rp9");
   if(ptr > 0)
   {
-    int type = CONFIG_TYPE_HARDWARE | CONFIG_TYPE_HOST;
-    result = cfgfile_load(p, filename, &type, 0);
-  }
-  if(result)
-  {
-  	set_joyConf(p);
-    extractFileName(filename, last_loaded_config);
+    // Load rp9 config
+    result = rp9_parse_file(p, filename);
+    if(result)
+      extractFileName(filename, last_loaded_config);
   }
   else 
-    result = loadconfig_old(p, filename);
+	{
+  	ptr = strstr((char *)filename, ".uae");
+    if(ptr > 0)
+    {
+      int type = CONFIG_TYPE_HARDWARE | CONFIG_TYPE_HOST;
+      result = cfgfile_load(p, filename, &type, 0, 1);
+    }
+    if(result)
+      extractFileName(filename, last_loaded_config);
+  }
 
   if(result)
   {
     for(i=0; i < p->nr_floppies; ++i)
     {
-      if(!DISK_validate_filename(p->df[i], 0, NULL, NULL))
-        p->df[i][0] = 0;
-      disk_insert(i, p->df[i]);
-      if(strlen(p->df[i]) > 0)
-        AddFileToDiskList(p->df[i], 1);
+      if(!DISK_validate_filename(p, p->floppyslots[i].df, 0, NULL, NULL, NULL))
+        p->floppyslots[i].df[0] = 0;
+      disk_insert(i, p->floppyslots[i].df);
+      if(strlen(p->floppyslots[i].df) > 0)
+        AddFileToDiskList(p->floppyslots[i].df, 1);
     }
 
-    inputdevice_updateconfig (p);
-
+    if(!isdefault)
+      inputdevice_updateconfig (NULL, p);
+#ifdef WITH_LOGGING
+    p->leds_on_screen = true;
+#endif
     SetLastActiveConfig(filename);
+    quickstart_model = -1;
   }
 
   return result;
@@ -382,12 +540,12 @@ int check_configfile(char *file)
     return 1;
   }
   
-  strcpy(tmp, file);
+  strncpy(tmp, file, MAX_PATH);
 	char *ptr = strstr(tmp, ".uae");
 	if(ptr > 0)
   {
     *(ptr + 1) = '\0';
-    strcat(tmp, "conf");
+    strncat(tmp, "conf", MAX_PATH);
     f = fopen(tmp, "rt");
     if(f)
     {
@@ -406,13 +564,13 @@ void extractFileName(const char * str,char *buffer)
 	while(*p != '/' && p > str)
 		p--;
 	p++;
-	strcpy(buffer,p);
+	strncpy(buffer,p, MAX_PATH);
 }
 
 
 void extractPath(char *str, char *buffer)
 {
-	strcpy(buffer, str);
+	strncpy(buffer, str, MAX_PATH);
 	char *p = buffer + strlen(buffer) - 1;
 	while(*p != '/' && p > buffer)
 		p--;
@@ -507,6 +665,17 @@ void saveAdfDir(void)
     fputs(buffer, f);
   }
 
+  snprintf(buffer, MAX_DPATH, "MRUCDList=%d\n", lstMRUCDList.size());
+  fputs(buffer, f);
+  for(i=0; i<lstMRUCDList.size(); ++i)
+  {
+    snprintf(buffer, MAX_DPATH, "CDfile=%s\n", lstMRUCDList[i].c_str());
+    fputs(buffer, f);
+  }
+
+  snprintf(buffer, MAX_DPATH, "Quickstart=%d\n", quickstart_start);
+  fputs(buffer, f);
+
 	fclose(f);
 	return;
 }
@@ -524,125 +693,214 @@ void get_string(FILE *f, char *dst, int size)
 }
 
 
+static void trimwsa (char *s)
+{
+  /* Delete trailing whitespace.  */
+  int len = strlen (s);
+  while (len > 0 && strcspn (s + len - 1, "\t \r\n") == 0)
+    s[--len] = '\0';
+}
+
+
 void loadAdfDir(void)
 {
 	char path[MAX_DPATH];
   int i;
 
-	strcpy(currentDir, start_path_data);
+	strncpy(currentDir, start_path_data, MAX_DPATH);
 	snprintf(config_path, MAX_DPATH, "%s/conf/", start_path_data);
 	snprintf(rom_path, MAX_DPATH, "%s/kickstarts/", start_path_data);
+	snprintf(rp9_path, MAX_DPATH, "%s/rp9/", start_path_data);
 
 	snprintf(path, MAX_DPATH, "%s/conf/adfdir.conf", start_path_data);
-	FILE *f1=fopen(path,"rt");
-	if(f1)
-	{
-		fscanf(f1, "path=");
-		get_string(f1, currentDir, sizeof(currentDir));
-		if(!feof(f1))
-		{
-		  fscanf(f1, "config_path=");
-		  get_string(f1, config_path, sizeof(config_path));
-		  fscanf(f1, "rom_path=");
-      get_string(f1, rom_path, sizeof(rom_path));
-      
-      int numROMs;
-      fscanf(f1, "ROMs=%d\n", &numROMs);
-      for(i=0; i<numROMs; ++i)
-      {
-        AvailableROM *tmp;
-        tmp = new AvailableROM();
-        fscanf(f1, "ROMName=");
-        get_string(f1, tmp->Name, sizeof(tmp->Name));
-        fscanf(f1, "ROMPath=");
-        get_string(f1, tmp->Path, sizeof(tmp->Path));
-        fscanf(f1, "ROMType=%d\n", &(tmp->ROMType));
-        lstAvailableROMs.push_back(tmp);
-      }
-      
-      lstMRUDiskList.clear();
-      int numDisks = 0;
-      char disk[MAX_PATH];
-      fscanf(f1, "MRUDiskList=%d\n", &numDisks);
-      for(i=0; i<numDisks; ++i)
-      {
-        fscanf(f1, "Diskfile=");
-        get_string(f1, disk, sizeof(disk));
-        lstMRUDiskList.push_back(disk);
-      }
-	  }
-		fclose(f1);
-	}
+  struct zfile *fh;
+  fh = zfile_fopen (path, _T("r"), ZFD_NORMAL);
+  if (fh) {
+    char linea[CONFIG_BLEN];
+    TCHAR option[CONFIG_BLEN], value[CONFIG_BLEN];
+    int numROMs, numDisks, numCDs;
+    int romType = -1;
+    char romName[MAX_PATH] = { '\0' };
+    char romPath[MAX_PATH] = { '\0' };
+    char tmpFile[MAX_PATH];
+    
+    while (zfile_fgetsa (linea, sizeof (linea), fh) != 0) {
+    	trimwsa (linea);
+    	if (strlen (linea) > 0) {
+  	    if (!cfgfile_separate_linea (path, linea, option, value))
+      		continue;
+        
+        if(cfgfile_string(option, value, "ROMName", romName, sizeof(romName))
+        || cfgfile_string(option, value, "ROMPath", romPath, sizeof(romPath))
+        || cfgfile_intval(option, value, "ROMType", &romType, 1)) {
+          if(strlen(romName) > 0 && strlen(romPath) > 0 && romType != -1) {
+            AvailableROM *tmp = new AvailableROM();
+            strncpy(tmp->Name, romName, sizeof(tmp->Name));
+            strncpy(tmp->Path, romPath, sizeof(tmp->Path));
+            tmp->ROMType = romType;
+            lstAvailableROMs.push_back(tmp);
+            strncpy(romName, "", sizeof(romName));
+            strncpy(romPath, "", sizeof(romPath));
+            romType = -1;
+          }
+        } else if (cfgfile_string(option, value, "Diskfile", tmpFile, sizeof(tmpFile))) {
+          FILE *f = fopen(tmpFile, "rb");
+          if(f != NULL) {
+            fclose(f);
+            lstMRUDiskList.push_back(tmpFile);
+          }
+        } else if (cfgfile_string(option, value, "CDfile", tmpFile, sizeof(tmpFile))) {
+          FILE *f = fopen(tmpFile, "rb");
+          if(f != NULL) {
+            fclose(f);
+            lstMRUCDList.push_back(tmpFile);
+          }
+        } else {
+          cfgfile_string(option, value, "path", currentDir, sizeof(currentDir));
+          cfgfile_string(option, value, "config_path", config_path, sizeof(config_path));
+          cfgfile_string(option, value, "rom_path", rom_path, sizeof(rom_path));
+          cfgfile_intval(option, value, "ROMs", &numROMs, 1);
+          cfgfile_intval(option, value, "MRUDiskList", &numDisks, 1);
+          cfgfile_intval(option, value, "MRUCDList", &numCDs, 1);
+          cfgfile_intval(option, value, "Quickstart", &quickstart_start, 1);
+        }
+    	}
+    }
+    zfile_fclose (fh);
+  }
 }
 
+
+int currVSyncRate = 0;
+bool SetVSyncRate(int hz)
+{
+/*
+	char cmd[64];
+
+  if(currVSyncRate != hz && (hz == 50 || hz == 60))
+  {
+    snprintf((char*)cmd, 64, "sudo /usr/pandora/scripts/op_lcdrate.sh %d", hz);
+    system(cmd);
+    currVSyncRate = hz;
+    return true;
+  }
+*/
+  return false;
+}
 
 void setCpuSpeed()
 {
 return;
-#if 0
-	char speedCmd[128];
-
-#ifdef RASPBERRY
-	return;
-#endif
+/*
+#ifdef PANDORA_SPECIFIC
+  char speedCmd[128];
 
   currprefs.pandora_cpu_speed = changed_prefs.pandora_cpu_speed;
 
 	if(currprefs.pandora_cpu_speed != lastCpuSpeed)
 	{
-/*
 		snprintf((char*)speedCmd, 128, "unset DISPLAY; echo y | sudo -n /usr/pandora/scripts/op_cpuspeed.sh %d", currprefs.pandora_cpu_speed);
 		system(speedCmd);
-*/
 		lastCpuSpeed = currprefs.pandora_cpu_speed;
 		cpuSpeedChanged = true;
 	}
 	if(changed_prefs.ntscmode != currprefs.ntscmode)
 	{
-/*
 		if(changed_prefs.ntscmode)
-			system("sudo /usr/pandora/scripts/op_lcdrate.sh 60");
+			SetVSyncRate(60);
 		else
-			system("sudo /usr/pandora/scripts/op_lcdrate.sh 50");
-*/
+			SetVSyncRate(50);
+		fix_apmodes(&changed_prefs);
 	}
+#else
+  return;
 #endif
+*/
+}
+
+
+int getDefaultCpuSpeed(void)
+{
+return 0;
+/*
+#ifdef PANDORA_SPECIFIC
+  int speed = 600;
+  FILE* f = fopen ("/etc/pandora/conf/cpu.conf", "rt");
+  if(f)
+  {
+    char line[128];
+    for(int i=0; i<6; ++i)
+    {
+      fscanf(f, "%s\n", &line);
+      if(strncmp(line, "default:", 8) == 0)
+      {
+        int value = 0;
+        sscanf(line, "default:%d", &value);
+        if(value > 500 && value < 1200)
+        {
+          speed = value;
+        }
+      }
+    }
+    fclose(f);
+  }
+  return speed;
+#else
+  return 0;
+#endif
+*/
 }
 
 
 void resetCpuSpeed(void)
 {
 return;
-#if 0
-#ifdef RASPBERRY
-	return;
-#endif
+/*
+#ifdef PANDORA_SPECIFIC
   if(cpuSpeedChanged)
   {
-    FILE* f = fopen ("/etc/pandora/conf/cpu.conf", "rt");
-    if(f)
-    {
-      char line[128];
-      for(int i=0; i<6; ++i)
-      {
-        fscanf(f, "%s\n", &line);
-        if(strncmp(line, "default:", 8) == 0)
-        {
-          int value = 0;
-          sscanf(line, "default:%d", &value);
-          if(value > 500 && value < 1200)
-          {
-            lastCpuSpeed = value - 10;
-            currprefs.pandora_cpu_speed = changed_prefs.pandora_cpu_speed = value;
-            setCpuSpeed();
-            printf("CPU speed reset to %d\n", value);
-          }
-        }
-      }
-      fclose(f);
-    }
+    lastCpuSpeed = defaultCpuSpeed - 10;
+    currprefs.pandora_cpu_speed = changed_prefs.pandora_cpu_speed = defaultCpuSpeed;
+    setCpuSpeed();
   }
+#else
+  return;
 #endif
+*/
+}
+
+
+void target_addtorecent (const TCHAR *name, int t)
+{
+}
+
+
+void target_reset (void)
+{
+}
+
+
+bool target_can_autoswitchdevice(void)
+{
+	return true;
+}
+
+
+uae_u32 emulib_target_getcpurate (uae_u32 v, uae_u32 *low)
+{
+  *low = 0;
+  if (v == 1) {
+    *low = 1e+9; /* We have nano seconds */
+    return 0;
+  } else if (v == 2) {
+    int64_t time;
+    struct timespec ts;
+    clock_gettime (CLOCK_MONOTONIC, &ts);
+    time = (((int64_t) ts.tv_sec) * 1000000000) + ts.tv_nsec;
+    *low = (uae_u32) (time & 0xffffffff);
+    return (uae_u32)(time >> 32);
+  }
+  return 0;
 }
 
 #include "core-log.h"
@@ -655,7 +913,12 @@ extern char RETRO_DIR[512];
 int skel_main (int argc, char *argv[])
 {
   struct sigaction action;
+  
+	max_uae_width = 768;
+	max_uae_height = 625;
 
+  defaultCpuSpeed = getDefaultCpuSpeed();
+  
   // Get startup path
 	getcwd(start_path_data, MAX_DPATH);
 
@@ -668,639 +931,363 @@ sprintf(start_path_data,"%s/uae4arm\0",RETRO_DIR);
 LOGI("spd(%s)\n",start_path_data);
 
 	loadAdfDir();
+  rp9_init();
 
   snprintf(savestate_fname, MAX_PATH, "%s/saves/default.ads", start_path_data);
 	logging_init ();
+  
   memset(&action, 0, sizeof(action));
   action.sa_sigaction = signal_segv;
   action.sa_flags = SA_SIGINFO;
   if(sigaction(SIGSEGV, &action, NULL) < 0)
   {
-    LOGI("Failed to set signal handler (SIGSEGV).\n");
+    printf("Failed to set signal handler (SIGSEGV).\n");
     abort();
   }
   if(sigaction(SIGILL, &action, NULL) < 0)
   {
-    LOGI("Failed to set signal handler (SIGILL).\n");
+    printf("Failed to set signal handler (SIGILL).\n");
+    abort();
+  }
+
+  memset(&action, 0, sizeof(action));
+  action.sa_sigaction = signal_buserror;
+  action.sa_flags = SA_SIGINFO;
+  if(sigaction(SIGBUS, &action, NULL) < 0)
+  {
+    printf("Failed to set signal handler (SIGBUS).\n");
+    abort();
+  }
+
+  memset(&action, 0, sizeof(action));
+  action.sa_sigaction = signal_term;
+  action.sa_flags = SA_SIGINFO;
+  if(sigaction(SIGTERM, &action, NULL) < 0)
+  {
+    printf("Failed to set signal handler (SIGTERM).\n");
     abort();
   }
 
   alloc_AmigaMem();
   RescanROMs();
+#ifdef CAPSLOCK_DEBIAN_WORKAROUND
+  // set capslock state based upon current "real" state
+  ioctl(0, KDGKBLED, &kbd_flags);
+  ioctl(0, KDGETLED, &kbd_led_status);
+  if ((kbd_flags & 07) & LED_CAP)
+  {
+   // record capslock pressed
+   kbd_led_status |= LED_CAP;
+   inputdevice_do_keyboard(AK_CAPSLOCK, 1);
+  }
+  else
+  {
+   // record capslock as not pressed
+   kbd_led_status &= ~LED_CAP;
+   inputdevice_do_keyboard(AK_CAPSLOCK, 0);
+  }
+  ioctl(0, KDSETLED, kbd_led_status);
+#endif
+
 co_switch(mainThread);
+
   real_main (argc, argv);
+
+#ifdef CAPSLOCK_DEBIAN_WORKAROUND
+  // restore keyboard LEDs to normal state
+  ioctl(0, KDSETLED, 0xFF);
+#endif
+
+  ClearAvailableROMList();
+  romlist_clear();
+  free_keyring();
   free_AmigaMem();
+  lstMRUDiskList.clear();
+  lstMRUCDList.clear();
+  rp9_cleanup();
   
   logging_cleanup();
-  
+
   return 0;
-}
-
-
-int needmousehack (void)
-{
-    return 1;
-}
-
-
-int mousehack_allowed (void)
-{
-    return 1;
-}
-
-
-void keyboard_init(void)
-{
-  int i;
-  
-  for (i = 256; i--;)
-		uae4all_keystate[i] = 0;
-  shiftWasPressed = 0;
 }
 
 extern int Retro_PollEvent();
 
-void handle_events (void)
+int handle_msgpump (void)
 {
 
+	int got = 0;
+
 Retro_PollEvent();
-//LOGI("handleevent\n");
+
 #if 0
   SDL_Event rEvent;
-  int iAmigaKeyCode;
-  int i, j;
-  int iIsHotKey = 0;
-
-  /* Handle GUI events */
-  gui_handle_events ();
-  handle_joymouse();
-    
-  while (SDL_PollEvent(&rEvent))
-  {
+  int keycode;
+  int modifier;
+  int handled = 0;
+  int i;
+  
+  if(delayed_mousebutton) {
+    --delayed_mousebutton;
+    if(delayed_mousebutton == 0)
+      setmousebuttonstate (0, 0, 1);
+  }
+  
+	while (SDL_PollEvent(&rEvent)) {
+		got = 1;
+		
 		switch (rEvent.type)
 		{
   		case SDL_QUIT:
   			uae_quit();
   			break;
 
+		case SDL_JOYBUTTONDOWN:
+			if (currprefs.button_for_menu != -1 && rEvent.jbutton.button == currprefs.button_for_menu)
+				inputdevice_add_inputcode(AKS_ENTERGUI, 1);
+			if (currprefs.button_for_quit != -1 && rEvent.jbutton.button == currprefs.button_for_quit)
+				inputdevice_add_inputcode(AKS_QUIT, 1);
+			break;
+	
   		case SDL_KEYDOWN:
-  			if(rEvent.key.keysym.sym==SDLK_PAGEUP)
-  				slow_mouse=true;
-  			if(currprefs.pandora_custom_dpad == 1) // dPad as mouse, why these emulation of key presses?
-  			{
-  				if(rEvent.key.keysym.sym==SDLK_RSHIFT)
-  				{
-  					uae4all_keystate[AK_LALT] = 1;
-  					record_key(AK_LALT << 1);
-  				}
-  				if(rEvent.key.keysym.sym==SDLK_RCTRL || rEvent.key.keysym.sym==SDLK_END || rEvent.key.keysym.sym==SDLK_HOME)
-  				{
-  					uae4all_keystate[AK_RALT] = 1;
-  					record_key(AK_RALT << 1);
-  				}
-  				if(rEvent.key.keysym.sym==SDLK_PAGEDOWN)
-  				{
-  					uae4all_keystate[AK_DN] = 1;
-  					record_key(AK_DN << 1);
-  				}
-  			}
-			
-  			if (rEvent.key.keysym.sym==SDLK_LALT)
-  			{
-					// state moves thus:
-					// joystick mode (with virt keyboard on L and R)
-					// mouse mode (with mouse buttons on L and R)
-					// remapping mode (with whatever's been supplied)
-					// back to start of state
 
-					currprefs.pandora_custom_dpad++;
-#ifdef RASPBERRY
-					if(currprefs.pandora_custom_dpad > 1)
-#else
-					if(currprefs.pandora_custom_dpad > 2)
+  		  if (currprefs.key_for_menu != 0 && rEvent.key.keysym.sym == currprefs.key_for_menu)
+  		  	inputdevice_add_inputcode(AKS_ENTERGUI, 1);
+  		  if (currprefs.key_for_quit != 0 && rEvent.key.keysym.sym == currprefs.key_for_quit)
+  		  	inputdevice_add_inputcode(AKS_QUIT, 1);
+#ifdef ACTION_REPLAY
+  		  if(rEvent.key.keysym.sym == currprefs.key_for_cartridge)
+        		      if(currprefs.cartfile[0] != '\0') {
+          		      inputdevice_add_inputcode (AKS_FREEZEBUTTON, 1);
+    				        handled = 1;
+    				      }
 #endif
-					  currprefs.pandora_custom_dpad = 0;
-          changed_prefs.pandora_custom_dpad = currprefs.pandora_custom_dpad;
-          if(currprefs.pandora_custom_dpad == 2)
-          	mousehack_set(mousehack_follow);
-          else
-      	    mousehack_set (mousehack_dontcare);
+
+  		  switch(rEvent.key.keysym.sym)
+  		  {
+ 		#ifdef CAPSLOCK_DEBIAN_WORKAROUND
+		case SDLK_CAPSLOCK: // capslock
+		     // Treat CAPSLOCK as a toggle. If on, set off and vice/versa
+                     ioctl(0, KDGKBLED, &kbd_flags);
+                     ioctl(0, KDGETLED, &kbd_led_status);
+                     if ((kbd_flags & 07) & LED_CAP)
+                     {
+                        // On, so turn off
+                        kbd_led_status &= ~LED_CAP;
+                        kbd_flags &= ~LED_CAP;
+                        inputdevice_do_keyboard(AK_CAPSLOCK, 0);
+                     } else {
+                               // Off, so turn on
+                               kbd_led_status |= LED_CAP;
+                               kbd_flags |= LED_CAP;
+                               inputdevice_do_keyboard(AK_CAPSLOCK, 1);
+                            }
+                     ioctl(0, KDSETLED, kbd_led_status);
+                     ioctl(0, KDSKBLED, kbd_flags);
+                     break;
+                 #endif
+
+				  case SDLK_LSHIFT: // Shift key
+				  inputdevice_do_keyboard(AK_LSH, 1);
+				  break;
             
-  				show_inputmode = 1;
-  			}
+				  case VK_L: // Left shoulder button
+				  case VK_R:  // Right shoulder button
+  					if(currprefs.input_tablet > TABLET_OFF) {
+  					  // Holding left or right shoulder button -> stylus does right mousebutton
+  					  doStylusRightClick = 1;
+            }
+            // Fall through...
+            
+  				default:
+  				  if(currprefs.pandora_customControls) {
+  				    keycode = customControlMap[rEvent.key.keysym.sym];
+  				    if(keycode < 0) {
+  				      // Simulate mouse or joystick
+  				      SimulateMouseOrJoy(keycode, 1);
+  				      break;
+  				    }
+  				    else if(keycode > 0) {
+  				      // Send mapped key press
+  				      inputdevice_do_keyboard(keycode, 1);
+  				      break;
+  				    }
+  				  }
+  				  else
+  				  {  
+  				  modifier = rEvent.key.keysym.mod;
+  				  keycode = translate_pandora_keys(rEvent.key.keysym.sym, &modifier);
+  				  if(keycode)
+  				  {
+				      if(modifier == KMOD_SHIFT)
+  				      inputdevice_do_keyboard(AK_LSH, 1);
+  				    else
+  				      inputdevice_do_keyboard(AK_LSH, 0);
+				      inputdevice_do_keyboard(keycode, 1);
+  				  } else {
+				      if (keyboard_type == KEYCODE_UNK)
+				        inputdevice_translatekeycode(0, rEvent.key.keysym.sym, 1);
+				      else
+				        inputdevice_translatekeycode(0, rEvent.key.keysym.scancode, 1);
 
-				if (rEvent.key.keysym.sym==SDLK_RSHIFT || rEvent.key.keysym.sym==SDLK_RCTRL)
-					doStylusRightClick = 1;
-
-  			if (rEvent.key.keysym.sym!=SDLK_UP && rEvent.key.keysym.sym!=SDLK_DOWN && rEvent.key.keysym.sym!=SDLK_LEFT &&
-  				rEvent.key.keysym.sym!=SDLK_RIGHT && rEvent.key.keysym.sym!=SDLK_PAGEUP && rEvent.key.keysym.sym!=SDLK_PAGEDOWN &&
-  				rEvent.key.keysym.sym!=SDLK_HOME && rEvent.key.keysym.sym!=SDLK_END && rEvent.key.keysym.sym!=SDLK_LALT &&
-  				rEvent.key.keysym.sym!=SDLK_LCTRL && rEvent.key.keysym.sym!=SDLK_RSHIFT && rEvent.key.keysym.sym!=SDLK_RCTRL)
-  			{
-  				iAmigaKeyCode = keycode2amiga(&(rEvent.key.keysym));
-  				if (iAmigaKeyCode >= 0)
-  				{
-#ifdef PANDORA
-  				  if(iAmigaKeyCode & SIMULATE_SHIFT)
-  			    {
-              // We need to simulate shift
-              iAmigaKeyCode = iAmigaKeyCode & 0x1ff;
-              shiftWasPressed = uae4all_keystate[AK_LSH];
-              if(!shiftWasPressed)
-              {
-                uae4all_keystate[AK_LSH] = 1;
-                record_key(AK_LSH << 1);
-              }
-  			    }
-  				  if(iAmigaKeyCode & SIMULATE_RELEASED_SHIFT)
-  			    {
-              // We need to simulate released shift
-              iAmigaKeyCode = iAmigaKeyCode & 0x1ff;
-              shiftWasPressed = uae4all_keystate[AK_LSH];
-              if(shiftWasPressed)
-              {
-                uae4all_keystate[AK_LSH] = 0;
-                record_key((AK_LSH << 1) | 1);
-              }
-  			    }
-#endif
-  					if (!uae4all_keystate[iAmigaKeyCode])
-  					{
-  						uae4all_keystate[iAmigaKeyCode] = 1;
-  						record_key(iAmigaKeyCode << 1);
-  					}
-  				}
-  			}
-  			break;
-
-		case SDL_KEYUP:
-  			if(rEvent.key.keysym.sym==SDLK_PAGEUP)
-  				slow_mouse = false;
-  			if(currprefs.pandora_custom_dpad == 1) // dPad as mouse, why these emulation of key presses?
-  			{
-  				if(rEvent.key.keysym.sym==SDLK_RSHIFT)
-  				{
-  					uae4all_keystate[AK_LALT] = 0;
-  					record_key((AK_LALT << 1) | 1);
-  				}
-  				if(rEvent.key.keysym.sym==SDLK_RCTRL || rEvent.key.keysym.sym==SDLK_END || rEvent.key.keysym.sym==SDLK_HOME)
-  				{
-  					uae4all_keystate[AK_RALT] = 0;
-  					record_key((AK_RALT << 1) | 1);
-  				}
-  				if(rEvent.key.keysym.sym==SDLK_PAGEDOWN)
-  				{
-  					uae4all_keystate[AK_DN] = 0;
-  					record_key((AK_DN << 1) | 1);
-  				}
-  			}
-
-				if (rEvent.key.keysym.sym==SDLK_RSHIFT || rEvent.key.keysym.sym==SDLK_RCTRL)
-			  {
-					doStylusRightClick = 0;
-  				mouseMoving = 0;
-  				justClicked = 0;
-  				fcounter = 0;
-  				buttonstate[2] = 0;
+				    }
+                                  break;
+                                  }
 				}
+        break;
+        
+  	  case SDL_KEYUP:
+  	    switch(rEvent.key.keysym.sym)
+  	    {
+                #ifdef CAPSLOCK_DEBIAN_WORKAROUND
+                case SDLK_CAPSLOCK: // capslock
+                     // Treat CAPSLOCK as a toggle. If on, set off and vice/versa
+                     ioctl(0, KDGKBLED, &kbd_flags);
+                     ioctl(0, KDGETLED, &kbd_led_status);
+                     if ((kbd_flags & 07) & LED_CAP)
+                     {
+                        // On, so turn off
+                        kbd_led_status &= ~LED_CAP;
+                        kbd_flags &= ~LED_CAP;
+                        inputdevice_do_keyboard(AK_CAPSLOCK, 0);
+                     } else {
+                               // Off, so turn on
+                               kbd_led_status |= LED_CAP;
+                               kbd_flags |= LED_CAP;
+                               inputdevice_do_keyboard(AK_CAPSLOCK, 1);
+                            }
+                     ioctl(0, KDSETLED, kbd_led_status);
+                     ioctl(0, KDSKBLED, kbd_flags);
+                     break;
+                 #endif
 
-  			if (rEvent.key.keysym.sym==SDLK_LALT)
-  			{
-  				show_inputmode = 0;
-  			}
-  			if (rEvent.key.keysym.sym!=SDLK_UP && rEvent.key.keysym.sym!=SDLK_DOWN && rEvent.key.keysym.sym!=SDLK_LEFT &&
-  				rEvent.key.keysym.sym!=SDLK_RIGHT && rEvent.key.keysym.sym!=SDLK_PAGEUP && rEvent.key.keysym.sym!=SDLK_PAGEDOWN &&
-  				rEvent.key.keysym.sym!=SDLK_HOME && rEvent.key.keysym.sym!=SDLK_END && rEvent.key.keysym.sym!=SDLK_LALT &&
-  				rEvent.key.keysym.sym!=SDLK_LCTRL && rEvent.key.keysym.sym!=SDLK_RSHIFT && rEvent.key.keysym.sym!=SDLK_RCTRL)
-  			{
-  				iAmigaKeyCode = keycode2amiga(&(rEvent.key.keysym));
-  				if (iAmigaKeyCode >= 0)
-  				{
-#ifdef PANDORA
-  				  if(iAmigaKeyCode & SIMULATE_SHIFT)
-  			    {
-              // We needed to simulate shift
-              iAmigaKeyCode = iAmigaKeyCode & 0x1ff;
-              if(!shiftWasPressed)
-              {
-                uae4all_keystate[AK_LSH] = 0;
-                record_key((AK_LSH << 1) | 1);
-                shiftWasPressed = 0;
-              }
-  			    }
-  				  if(iAmigaKeyCode & SIMULATE_RELEASED_SHIFT)
-  			    {
-              // We needed to simulate released shift
-              iAmigaKeyCode = iAmigaKeyCode & 0x1ff;
-              if(shiftWasPressed)
-              {
-                uae4all_keystate[AK_LSH] = 1;
-                record_key(AK_LSH << 1);
-                shiftWasPressed = 0;
-              }
-  			    }
-#endif
-  					uae4all_keystate[iAmigaKeyCode] = 0;
-  					record_key((iAmigaKeyCode << 1) | 1);
-  				}
-  			}
-  			break;
+				  case SDLK_LSHIFT: // Shift key
+            inputdevice_do_keyboard(AK_LSH, 0);
+            break;
+            
+				  case VK_L: // Left shoulder button
+				  case VK_R:  // Right shoulder button
+  					if(currprefs.input_tablet > TABLET_OFF) {
+  					  // Release left or right shoulder button -> stylus does left mousebutton
+    					doStylusRightClick = 0;
+            }
+            // Fall through...
+  				
+  				default:
+  				  if(currprefs.pandora_customControls) {
+  				    keycode = customControlMap[rEvent.key.keysym.sym];
+  				    if(keycode < 0) {
+  				      // Simulate mouse or joystick
+  				      SimulateMouseOrJoy(keycode, 0);
+  				      break;
+  				    }
+  				    else if(keycode > 0) {
+  				      // Send mapped key release
+				      inputdevice_do_keyboard(keycode, 0);
+  				      break;
+  				    }
+  				  }
 
-  		case SDL_MOUSEBUTTONDOWN:
-    		if (currprefs.pandora_custom_dpad < 2)
-    			buttonstate[(rEvent.button.button-1)%3] = 1;
-  			break;
+  				  modifier = rEvent.key.keysym.mod;
+  				  keycode = translate_pandora_keys(rEvent.key.keysym.sym, &modifier);
+  				  if(keycode)
+  				  {
+				      inputdevice_do_keyboard(keycode, 0);
+				      if(modifier == KMOD_SHIFT)
+  				      inputdevice_do_keyboard(AK_LSH, 0);
+            } else {
+				      if (keyboard_type == KEYCODE_UNK)
+				        inputdevice_translatekeycode(0, rEvent.key.keysym.sym, 0);
+				      else
+				        inputdevice_translatekeycode(0, rEvent.key.keysym.scancode, 0);
+				    }
+  				  break;
+  	    }
+  	    break;
+  	    
+  	  case SDL_MOUSEBUTTONDOWN:
+        if(currprefs.jports[0].id == JSEM_MICE || currprefs.jports[1].id == JSEM_MICE) {
+    	    if(rEvent.button.button == SDL_BUTTON_LEFT) {
+    	      if(currprefs.input_tablet > TABLET_OFF && !doStylusRightClick) {
+    	        // Delay mousebutton, we need new position first...
+    	        delayed_mousebutton = currprefs.pandora_tapDelay << 1;
+    	      } else {
+      	      setmousebuttonstate (0, doStylusRightClick, 1);
+      	    }
+    	    }
+    	    else if(rEvent.button.button == SDL_BUTTON_RIGHT)
+    	      setmousebuttonstate (0, 1, 1);
+        }
+  	    break;
 
-  		case SDL_MOUSEBUTTONUP:
-    		if (currprefs.pandora_custom_dpad < 2)
-    			buttonstate[(rEvent.button.button-1)%3] = 0;
-  			break;
-
+  	  case SDL_MOUSEBUTTONUP:
+        if(currprefs.jports[0].id == JSEM_MICE || currprefs.jports[1].id == JSEM_MICE) {
+    	    if(rEvent.button.button == SDL_BUTTON_LEFT) {
+  	        setmousebuttonstate (0, doStylusRightClick, 0);
+          }
+    	    else if(rEvent.button.button == SDL_BUTTON_RIGHT)
+    	      setmousebuttonstate (0, 1, 0);
+        }
+  	    break;
+  	    
   		case SDL_MOUSEMOTION:
-  			if(currprefs.pandora_custom_dpad == 2)
-  			{
-  				lastmx = rEvent.motion.x*2 - currprefs.pandora_stylusOffset + stylusAdjustX >> 1;
-  				lastmy = rEvent.motion.y*2 - currprefs.pandora_stylusOffset + stylusAdjustY >> 1;
-  				//mouseMoving = 1;
-  			}
-  			else if(slow_mouse)
-  			{
-  				lastmx += rEvent.motion.xrel;
-  				lastmy += rEvent.motion.yrel;
-  				if(rEvent.motion.x == 0)
-  					lastmx -= 2;
-  				if(rEvent.motion.y == 0)
-  					lastmy -= 2;
-  				if(rEvent.motion.x == currprefs.gfx_size.width - 1)
-  					lastmx += 2;
-  				if(rEvent.motion.y == currprefs.gfx_size.height - 1)
-  					lastmy += 2;
-  			}
-  			else
-  			{
-				  int mouseScale = currprefs.input_joymouse_multiplier / 2;
-				  if(rEvent.motion.xrel > 20 || rEvent.motion.xrel < -20 || rEvent.motion.yrel > 20 || rEvent.motion.yrel < -20)
-				    break;
-  				lastmx += rEvent.motion.xrel * mouseScale;
-  				lastmy += rEvent.motion.yrel * mouseScale;
-  				if(rEvent.motion.x == 0)
-  					lastmx -= mouseScale * 4;
-  				if(rEvent.motion.y == 0)
-  					lastmy -= mouseScale * 4;
-  				if(rEvent.motion.x == currprefs.gfx_size.width - 1)
-  					lastmx += mouseScale * 4;
-  				if(rEvent.motion.y == currprefs.gfx_size.height - 1)
-  					lastmy += mouseScale * 4;
-  			}
-  			newmousecounters = 1;
-  			break;
+  		  if(currprefs.input_tablet == TABLET_OFF) {
+          if(currprefs.jports[0].id == JSEM_MICE || currprefs.jports[1].id == JSEM_MICE) {
+  			    int x, y;
+    		    int mouseScale = currprefs.input_joymouse_multiplier / 2;
+            x = rEvent.motion.xrel;
+    				y = rEvent.motion.yrel;
+#ifdef PANDORA_SPECIFIC
+    				if(rEvent.motion.x == 0 && x > -4)
+    					x = -4;
+    				if(rEvent.motion.y == 0 && y > -4)
+    					y = -4;
+    				if(rEvent.motion.x == currprefs.gfx_size.width - 1 && x < 4)
+    					x = 4;
+    				if(rEvent.motion.y == currprefs.gfx_size.height - 1 && y < 4)
+    					y = 4;
+#endif
+  				  setmousestate(0, 0, x * mouseScale, 0);
+        	  setmousestate(0, 1, y * mouseScale, 0);
+          }
+        }
+        break;
 		}
-  }
+	}
 #endif
+	return got;
 }
 
-//void uae_set_thread_priority(int pri1){}
 
+static uaecptr clipboard_data;
 
-struct gui_msg {
-  int num;
-  const char *msg;
-};
-struct gui_msg gui_msglist[] = {
-  { NUMSG_NEEDEXT2,       "The software uses a non-standard floppy disk format. You may need to use a custom floppy disk image file instead of a standard one. This message will not appear again." },
-  { NUMSG_NOROM,          "Could not load system ROM, trying system ROM replacement." },
-  { NUMSG_NOROMKEY,       "Could not find system ROM key file." },
-  { NUMSG_KSROMCRCERROR,  "System ROM checksum incorrect. The system ROM image file may be corrupt." },
-  { NUMSG_KSROMREADERROR, "Error while reading system ROM." },
-  { NUMSG_NOEXTROM,       "No extended ROM found." },
-  { NUMSG_KS68EC020,      "The selected system ROM requires a 68EC020 or later CPU." },
-  { NUMSG_KS68020,        "The selected system ROM requires a 68020 or later CPU." },
-  { NUMSG_KS68030,        "The selected system ROM requires a 68030 CPU." },
-  { NUMSG_STATEHD,        "WARNING: Current configuration is not fully compatible with state saves." },
-  { NUMSG_KICKREP,        "You need to have a floppy disk (image file) in DF0: to use the system ROM replacement." },
-  { NUMSG_KICKREPNO,      "The floppy disk (image file) in DF0: is not compatible with the system ROM replacement functionality." },
-  { -1, "" }
-};
-
-std::vector<AvailableROM*> lstAvailableROMs;
-std::vector<std::string> lstMRUDiskList;
-
-void gui_disk_image_change (int unitnum, const char *name)
+void amiga_clipboard_die (void)
 {
 }
 
-void gui_hd_led (int led)
-{
-    static int resetcounter;
-
-    if (led == 0) {
-	    resetcounter--;
-	    if (resetcounter > 0)
-	      return;
-    }
-    gui_data.hd = led;
-    resetcounter = 2;
-}
-
-void gui_cd_led (int led)
+void amiga_clipboard_init (void)
 {
 }
 
-void gui_led (int led, int on)
+void amiga_clipboard_task_start (uaecptr data)
+{
+  clipboard_data = data;
+}
+
+uae_u32 amiga_clipboard_proc_start (void)
+{
+  return clipboard_data;
+}
+
+void amiga_clipboard_got_data (uaecptr data, uae_u32 size, uae_u32 actual)
 {
 }
 
-void gui_filename (int num, const char *name)
+int amiga_clipboard_want_data (void)
 {
-}
-
-void gui_message (const char *format,...)
-{
-  char msg[2048];
-  va_list parms;
-
-  va_start (parms, format);
-  vsprintf( msg, format, parms );
-  va_end (parms);
-
-  //InGameMessage(msg);
-}
-
-void notify_user (int msg)
-{
-  int i=0;
-  while(gui_msglist[i].num >= 0)
-  {
-    if(gui_msglist[i].num == msg)
-    {
-      gui_message(gui_msglist[i].msg);
-      break;
-    }
-    ++i;
-  }
-}
-
-
-void gui_lock (void)
-{
-}
-
-void gui_unlock (void)
-{
-}
-
-void gui_exit(void)
-{/*
-	resetCpuSpeed();
-	sync();
-	pandora_stop_sound();
-	saveAdfDir();
-	ClearConfigFileList();
-	ClearAvailableROMList();
-*/
-}
-
-int gui_init (void)
-{
-  int ret = 0;
- /* 
-#ifndef ANDROIDSDL
-  SDL_JoystickEventState(SDL_ENABLE);
-  SDL_JoystickOpen(0);
-#endif
-
-	emulating=0;
-
-  if(lstAvailableROMs.size() == 0)
-    RescanROMs();
-
-  graphics_subshutdown();
-  prefs_to_gui();
-  run_gui();
-  gui_to_prefs();
-  if(quit_program < 0)
-    quit_program = -quit_program;
-  if(quit_program == 1)
-    ret = -2; // Quit without start of emulator
-
-	setCpuSpeed();
-  update_display(&changed_prefs);
-
-	inputmode_init();
-  inputdevice_copyconfig (&changed_prefs, &currprefs);
-  inputdevice_config_change_test();
-*/
-	emulating=1;
-  return ret;
-}
-
-int gui_update (void)
-{
-/*
-  char tmp[MAX_PATH];
-
-  fetch_savestatepath(savestate_fname, MAX_DPATH);
-  fetch_screenshotpath(screenshot_filename, MAX_DPATH);
-  
-  if(strlen(currprefs.df[0]) > 0)
-    extractFileName(currprefs.df[0], tmp);
-  else
-    strncpy(tmp, last_loaded_config, MAX_PATH);
-
-  strncat(savestate_fname, tmp, MAX_DPATH);
-  strncat(screenshot_filename, tmp, MAX_DPATH);
-  removeFileExtension(savestate_fname);
-  removeFileExtension(screenshot_filename);
-
-  switch(currentStateNum)
-  {
-    case 1:
-  		strcat(savestate_fname,"-1.uss");
-	    strcat(screenshot_filename,"-1.png");
-	    break;
-    case 2:
-  		strcat(savestate_fname,"-2.uss");
-  		strcat(screenshot_filename,"-2.png");
-  		break;
-    case 3:
-  		strcat(savestate_fname,"-3.uss");
-  		strcat(screenshot_filename,"-3.png");
-  		break;
-    default: 
-  	   	strcat(savestate_fname,".uss");
-    		strcat(screenshot_filename,".png");
-  }*/
-    return 0;
-}
-
-void AddFileToDiskList(const char *file, int moveToTop)
-{
-  int i;
-  
-  for(i=0; i<lstMRUDiskList.size(); ++i)
-  {
-    if(!strcasecmp(lstMRUDiskList[i].c_str(), file))
-    {
-      if(moveToTop)
-      {
-        lstMRUDiskList.erase(lstMRUDiskList.begin() + i);
-        lstMRUDiskList.insert(lstMRUDiskList.begin(), file);
-      }
-      break;
-    }
-  }
-  if(i >= lstMRUDiskList.size())
-    lstMRUDiskList.insert(lstMRUDiskList.begin(), file);
-
-  while(lstMRUDiskList.size() > MAX_MRU_DISKLIST)
-    lstMRUDiskList.pop_back();
-}
-
-static void ClearAvailableROMList(void)
-{
-  while(lstAvailableROMs.size() > 0)
-  {
-    AvailableROM *tmp = lstAvailableROMs[0];
-    lstAvailableROMs.erase(lstAvailableROMs.begin());
-    delete tmp;
-  }
-}
-int emulating = 0;
-int stylusClickOverride=0;
-static char last_active_config[MAX_PATH] = { '\0' };
-
-void SetLastActiveConfig(const char *filename)
-{
-  extractFileName(filename, last_active_config);
-  removeFileExtension(last_active_config);
-}
-
-static void addrom(struct romdata *rd, char *path)
-{
-  AvailableROM *tmp;
-  char tmpName[MAX_DPATH];
-  tmp = new AvailableROM();
-  getromname(rd, tmpName);
-  strncpy(tmp->Name, tmpName, MAX_PATH);
-  strncpy(tmp->Path, path, MAX_PATH);
-  tmp->ROMType = rd->type;
-  lstAvailableROMs.push_back(tmp);
-}
-
-static struct romdata *scan_single_rom_2 (struct zfile *f)
-{
-  uae_u8 buffer[20] = { 0 };
-  uae_u8 *rombuf;
-  int cl = 0, size;
-  struct romdata *rd = 0;
-
-  zfile_fseek (f, 0, SEEK_END);
-  size = zfile_ftell (f);
-  zfile_fseek (f, 0, SEEK_SET);
-  if (size > 524288 * 2) /* don't skip KICK disks or 1M ROMs */
-  	return 0;
-  zfile_fread (buffer, 1, 11, f);
-  if (!memcmp (buffer, "KICK", 4)) {
-	  zfile_fseek (f, 512, SEEK_SET);
-	  if (size > 262144)
-	    size = 262144;
-  } else if (!memcmp (buffer, "AMIROMTYPE1", 11)) {
-  	cl = 1;
-	  size -= 11;
-  } else {
-	  zfile_fseek (f, 0, SEEK_SET);
-  }
-  rombuf = (uae_u8 *) xcalloc (size, 1);
-  if (!rombuf)
-  	return 0;
-  zfile_fread (rombuf, 1, size, f);
-  if (cl > 0) {
-  	decode_cloanto_rom_do (rombuf, size, size);
-	  cl = 0;
-  }
-  if (!cl) {
-  	rd = getromdatabydata (rombuf, size);
-  	if (!rd && (size & 65535) == 0) {
-	    /* check byteswap */
-	    int i;
-	    for (i = 0; i < size; i+=2) {
-    		uae_u8 b = rombuf[i];
-    		rombuf[i] = rombuf[i + 1];
-    		rombuf[i + 1] = b;
- 	    }
- 	    rd = getromdatabydata (rombuf, size);
-  	}
-  }
-  free (rombuf);
-  return rd;
-}
-static int isromext(char *path)
-{
-  char *ext;
-  int i;
-
-  if (!path)
-	  return 0;
-  ext = strrchr (path, '.');
-  if (!ext)
-  	return 0;
-  ext++;
-
-  if (!stricmp (ext, "rom") ||  !stricmp (ext, "adf") || !stricmp (ext, "key")
-	|| !stricmp (ext, "a500") || !stricmp (ext, "a1200") || !stricmp (ext, "a4000"))
-    return 1;
-  for (i = 0; uae_archive_extensions[i]; i++) {
-	  if (!stricmp (ext, uae_archive_extensions[i]))
-	    return 1;
-  }
   return 0;
 }
 
-static int scan_rom_2 (struct zfile *f, void *dummy)
+void clipboard_vsync (void)
 {
-  char *path = zfile_getname(f);
-  struct romdata *rd;
-
-  if (!isromext(path))
-	  return 0;
-  rd = scan_single_rom_2(f);
-  if (rd)
-    addrom (rd, path);
-  return 0;
 }
-
-static void scan_rom(char *path)
-{
-  struct romdata *rd;
-
-    if (!isromext(path)) {
-	//write_log("ROMSCAN: skipping file '%s', unknown extension\n", path);
-	return;
-    }
-  rd = getarcadiarombyname(path);
-  if (rd) 
-    addrom(rd, path);
-  else
-    zfile_zopen (path, scan_rom_2, 0);
-}
-
-
-void RescanROMs(void)
-{
-  std::vector<std::string> files;
-  char path[MAX_DPATH];
-  
-  ClearAvailableROMList();
-  fetch_rompath(path, MAX_DPATH);
-  
-  load_keyring(&changed_prefs, path);
-  ReadDirectory(path, NULL, &files);
-  for(int i=0; i<files.size(); ++i)
-  {
-    char tmppath[MAX_PATH];
-    strncpy(tmppath, path, MAX_PATH);
-    strncat(tmppath, files[i].c_str(), MAX_PATH);
-    scan_rom (tmppath);
-  }
-}
-

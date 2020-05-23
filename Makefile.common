@@ -6,7 +6,7 @@ LIBRETRO = $(CORE_DIR)/libretro
 GUI	 := $(CORE_DIR)/libretro/gui
 
 INCFLAGS := -I$(EMU) -I$(EMU)/od-retro -I$(EMU)/include -I$(LIBRETRO) \
-	-I$(LIBRETRO)/libco -I$(LIBRETRO)/core -I$(LIBUTILS)  -I$(EMU)menu 
+	-I$(LIBRETRO)/libco -I$(LIBRETRO)/core -I$(LIBUTILS)  -I$(EMU)menu -Ideps -I$(EMU)/archivers
 
 INCFLAGS += -I$(CORE_DIR)/libretro/libco \
 			-I$(CORE_DIR)/libretro/core \
@@ -15,48 +15,79 @@ INCFLAGS += -I$(CORE_DIR)/libretro/libco \
 			-I$(CORE_DIR)/libretro \
 			-I$(CORE_DIR) 
 OBJS =	\
+	$(EMU)/akiko.o \
+	$(EMU)/ar.o \
+	$(EMU)/aros.rom.o \
 	$(EMU)/audio.o \
 	$(EMU)/autoconf.o \
 	$(EMU)/blitfunc.o \
 	$(EMU)/blittable.o \
 	$(EMU)/blitter.o \
+	$(EMU)/blkdev.o \
+	$(EMU)/blkdev_cdimage.o \
+	$(EMU)/bsdsocket.o \
+	$(EMU)/calc.o \
+	$(EMU)/cd32_fmv.o \
+	$(EMU)/cd32_fmv_genlock.o \
+	$(EMU)/cdrom.o \
 	$(EMU)/cfgfile.o \
 	$(EMU)/cia.o \
 	$(EMU)/crc32.o \
 	$(EMU)/custom.o \
+	$(EMU)/def_icons.o \
+	$(EMU)/devices.o \
 	$(EMU)/disk.o \
+	$(EMU)/diskutil.o \
+	$(EMU)/dlopen.o \
 	$(EMU)/drawing.o \
-	$(EMU)/ersatz.o \
+	$(EMU)/events.o \
 	$(EMU)/expansion.o \
+	$(EMU)/fdi2raw.o \
 	$(EMU)/filesys.o \
+	$(EMU)/flashrom.o \
 	$(EMU)/fpp.o \
 	$(EMU)/fsdb.o \
 	$(EMU)/fsdb_unix.o \
 	$(EMU)/fsusage.o \
+	$(EMU)/gayle.o \
+	$(EMU)/gfxboard.o \
 	$(EMU)/gfxutil.o \
 	$(EMU)/hardfile.o \
+	$(EMU)/hrtmon.rom.o \
+	$(EMU)/ide.o \
 	$(EMU)/inputdevice.o \
 	$(EMU)/keybuf.o \
 	$(EMU)/main.o \
 	$(EMU)/memory.o \
-	$(EMU)/missing.o \
 	$(EMU)/native2amiga.o \
+	$(EMU)/rommgr.o \
+	$(EMU)/rtc.o \
 	$(EMU)/savestate.o \
+	$(EMU)/scsi.o \
+	$(EMU)/statusline.o \
 	$(EMU)/traps.o \
 	$(EMU)/uaelib.o \
 	$(EMU)/uaeresource.o \
 	$(EMU)/zfile.o \
 	$(EMU)/zfile_archive.o \
 	$(EMU)/archivers/7z/7zAlloc.o \
-	$(EMU)/archivers/7z/7zBuffer.o \
+	$(EMU)/archivers/7z/7zBuf.o \
 	$(EMU)/archivers/7z/7zCrc.o \
-	$(EMU)/archivers/7z/7zDecode.o \
-	$(EMU)/archivers/7z/7zExtract.o \
-	$(EMU)/archivers/7z/7zHeader.o \
+	$(EMU)/archivers/7z/7zCrcOpt.o \
+	$(EMU)/archivers/7z/7zDec.o \
 	$(EMU)/archivers/7z/7zIn.o \
-	$(EMU)/archivers/7z/7zItem.o \
-	$(EMU)/archivers/7z/7zMethodID.o \
-	$(EMU)/archivers/7z/LzmaDecode.o \
+	$(EMU)/archivers/7z/7zStream.o \
+	$(EMU)/archivers/7z/Bcj2.o \
+	$(EMU)/archivers/7z/Bra.o \
+	$(EMU)/archivers/7z/Bra86.o \
+	$(EMU)/archivers/7z/LzmaDec.o \
+	$(EMU)/archivers/7z/Lzma2Dec.o \
+	$(EMU)/archivers/7z/BraIA64.o \
+	$(EMU)/archivers/7z/Delta.o \
+	$(EMU)/archivers/7z/Sha256.o \
+	$(EMU)/archivers/7z/Xz.o \
+	$(EMU)/archivers/7z/XzCrc64.o \
+	$(EMU)/archivers/7z/XzDec.o \
 	$(EMU)/archivers/dms/crc_csum.o \
 	$(EMU)/archivers/dms/getbits.o \
 	$(EMU)/archivers/dms/maketbl.o \
@@ -80,9 +111,11 @@ OBJS =	\
 	$(EMU)/archivers/lha/uae_lha.o \
 	$(EMU)/archivers/lha/util.o \
 	$(EMU)/archivers/lzx/unlzx.o \
+	$(EMU)/archivers/mp2/kjmp2.o \
 	$(EMU)/archivers/wrp/warp.o \
 	$(EMU)/archivers/zip/unzip.o \
-	$(EMU)/md-retro/support.o 
+	$(EMU)/caps/caps_win32.o 
+
 
 ifdef PANDORA
 OBJS += $(EMU)/od-retro/gui/sdltruetypefont.o
@@ -95,7 +128,10 @@ endif
 HAVE_NEON := 1
 ifeq ($(HAVE_NEON), 1)
 	OBJS += $(EMU)/od-retro/neon_helper.o
+else
+	OBJS += $(EMU)/od-pandora/arm_helper.o
 endif
+
 
 ifdef USE_XFD
 OBJS += $(EMU)/cpu_small.o \
@@ -105,30 +141,41 @@ OBJS += $(EMU)/cpu_small.o \
 endif
 
 OBJS += $(EMU)/newcpu.o
+OBJS += $(EMU)/newcpu_common.o
 OBJS += $(EMU)/readcpu.o
 OBJS += $(EMU)/cpudefs.o
 OBJS += $(EMU)/cpustbl.o
 OBJS += $(EMU)/cpuemu_0.o
 OBJS += $(EMU)/cpuemu_4.o
 OBJS += $(EMU)/cpuemu_11.o
+OBJS += $(EMU)/cpuemu_40.o
+OBJS += $(EMU)/cpuemu_44.o
 OBJS += $(EMU)/jit/compemu.o
 OBJS += $(EMU)/jit/compemu_fpp.o
 OBJS += $(EMU)/jit/compstbl.o
 
 OBJS += $(EMU)/jit/compemu_support.o \
+	$(EMU)/md-retro/support.o \
+	$(EMU)/od-retro/bsdsocket_host.o \
+	$(EMU)/od-retro/cda_play.o \
+	$(EMU)/od-retro/charset.o \
 	$(EMU)/od-retro/fsdb_host.o \
-	$(EMU)/od-retro/joystick.o \
+	$(EMU)/od-retro/hardfile_pandora.o \
+	$(EMU)/od-retro/mp3decoder.o \
 	$(EMU)/od-retro/keyboard.o \
-	$(EMU)/od-retro/inputmode.o \
+	$(EMU)/od-retro/pandora_input.o \
 	$(EMU)/od-retro/writelog.o \
 	$(EMU)/od-retro/pandora.o \
 	$(EMU)/od-retro/pandora_filesys.o \
 	$(EMU)/od-retro/retro_gfx.o \
+	$(EMU)/od-retro/pandora_rp9.o \
 	$(EMU)/od-retro/pandora_mem.o \
 	$(EMU)/od-retro/sigsegv_handler.o \
-	$(EMU)/od-retro/menu/menu_config.o \
-	$(EMU)/td-sdl/thread.o \
-	$(EMU)/sd-retro/sound_retro_new.o 
+	$(EMU)/sd-retro/sound_retro_new.o \
+	$(EMU)/od-retro/pandora_gui.o \
+	$(EMU)/td-sdl/thread.o 
+#	$(EMU)/td-sdl/thread.o 
+#	$(EMU)/od-retro/menu/menu_config.o 
 
 OBJS += \
 	$(CORE_DIR)/libretro/core/libretro-core.o \

@@ -5,12 +5,11 @@
 
 #include "sysconfig.h"
 #include "sysdeps.h"
-#include "zfile.h"
+#include "lha.h"
 #include "zarchive.h"
 
-#include "lha.h"
 
-static char *methods[] =
+static const char *methods[] =
 {
 	LZHUFF0_METHOD, LZHUFF1_METHOD, LZHUFF2_METHOD, LZHUFF3_METHOD,
 	LZHUFF4_METHOD, LZHUFF5_METHOD, LZHUFF6_METHOD, LZHUFF7_METHOD,
@@ -26,8 +25,8 @@ struct zvolume *archive_directory_lha(struct zfile *zf)
     LzHeader hdr;
     int i;
 
-    tzset();
-    zv = zvolume_alloc(zf, ArchiveFormatLHA, NULL);
+    _tzset();
+    zv = zvolume_alloc(zf, ArchiveFormatLHA, NULL, NULL);
     while (get_header(zf, &hdr)) {
 	struct znode *zn;
 	int method;
@@ -37,22 +36,38 @@ struct zvolume *archive_directory_lha(struct zfile *zf)
 		method = i;
 	}
 	memset(&zai, 0, sizeof zai);
-	zai.name = hdr.name;
+	zai.name = au (hdr.name);
 	zai.size = hdr.original_size;
 	zai.flags = hdr.attribute;
-	zai.t = hdr.unix_last_modified_stamp -= timezone;
+	if (hdr.extend_type != 0) {
+		zai.tv.tv_sec = hdr.unix_last_modified_stamp -= _timezone;
+	} else {
+		struct tm t;
+		uae_u32 v = hdr.last_modified_stamp;
+
+		t.tm_sec = (v & 0x1f) * 2;
+		t.tm_min = (v >> 5) & 0x3f;
+		t.tm_hour = (v >> 11) & 0x1f;
+		t.tm_mday = (v >> 16) & 0x1f;
+		t.tm_mon = ((v >> 21) & 0xf) - 1;
+		t.tm_year = ((v >> 25) & 0x7f) + 80;
+		zai.tv.tv_sec = mktime (&t) - _timezone;
+	}
 	if (hdr.name[strlen(hdr.name) + 1] != 0)
-	    zai.comment = &hdr.name[strlen(hdr.name) + 1];
+	    zai.comment = au (&hdr.name[strlen(hdr.name) + 1]);
 	if (method == LZHDIRS_METHOD_NUM) {
 	    zvolume_adddir_abs(zv, &zai);
 	} else {
-	zn = zvolume_addfile_abs(zv, &zai);
-	zn->offset = zfile_ftell(zf);
-	zn->packedsize = hdr.packed_size;
+	  zn = zvolume_addfile_abs(zv, &zai);
+		if (zn) {
+	    zn->offset = zfile_ftell(zf);
+	    zn->packedsize = hdr.packed_size;
 	    zn->method = method;
+		}
 	}
+	xfree (zai.name);
+	xfree (zai.comment);
 	zfile_fseek(zf, hdr.packed_size, SEEK_CUR);
-	
     }
     return zv;
 }
@@ -60,7 +75,7 @@ struct zvolume *archive_directory_lha(struct zfile *zf)
 struct zfile *archive_access_lha(struct znode *zn)
 {
     struct zfile *zf = zn->volume->archive;
-    struct zfile *out = zfile_fopen_empty (zn->name, zn->size);
+    struct zfile *out = zfile_fopen_empty (zf, zn->name, zn->size);
     struct interfacing lhinterface;
 
     zfile_fseek(zf, zn->offset, SEEK_SET);

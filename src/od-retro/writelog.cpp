@@ -9,49 +9,46 @@
 #include "sysdeps.h"
 #include "uae.h"
 
-#include "core-log.h"
 
 #define WRITE_LOG_BUF_SIZE 4096
 FILE *debugfile = NULL;
 
-void console_out (const char *format,...)
+void console_out (const TCHAR *format,...)
 {
     va_list parms;
-    char buffer[WRITE_LOG_BUF_SIZE];
+    TCHAR buffer[WRITE_LOG_BUF_SIZE];
 
     va_start (parms, format);
     vsnprintf (buffer, WRITE_LOG_BUF_SIZE-1, format, parms);
     va_end (parms);
     printf(buffer);
-    LOGI(buffer);
 }
 
 #ifdef WITH_LOGGING
 
-void write_log (const char *format,...)
+void write_log (const TCHAR *format,...)
 {
   int count;
   int numwritten;
-  char buffer[WRITE_LOG_BUF_SIZE];
+  TCHAR buffer[WRITE_LOG_BUF_SIZE];
 
   va_list parms;
   va_start (parms, format);
   count = vsnprintf( buffer, WRITE_LOG_BUF_SIZE-1, format, parms );
-  if( debugfile ) {   
+  if( debugfile ) {
 	  fprintf( debugfile, buffer );
 	  fflush (debugfile);
   }
-LOGI(buffer);
   va_end (parms);
 }
 
 #endif
 
-void jit_abort (const char *format,...)
+void jit_abort (const TCHAR *format,...)
 {
     static int happened;
     int count;
-    char buffer[WRITE_LOG_BUF_SIZE];
+    TCHAR buffer[WRITE_LOG_BUF_SIZE];
     va_list parms;
     va_start (parms, format);
 
@@ -61,5 +58,5 @@ void jit_abort (const char *format,...)
     if (!happened)
 	gui_message ("JIT: Serious error:\n%s", buffer);
     happened = 1;
-    uae_reset (1);
+    uae_reset (1, 0);
 }

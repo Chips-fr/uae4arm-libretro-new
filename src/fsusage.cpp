@@ -17,12 +17,16 @@
 
 #include "sysconfig.h"
 #include "sysdeps.h"
-#include "config.h"
 
 #include <stdlib.h>
 #include <sys/types.h>
-#include <sys/statfs.h>
-#include <SDL.h>
+
+#if HAVE_SYS_STATFS_H
+# include <sys/statfs.h>
+#endif
+#ifdef STAT_STATVFS
+#include <sys/statvfs.h>
+#endif
 
 #include "fsusage.h"
 
@@ -45,16 +49,94 @@ static long adjust_blocks(long blocks, int fromsize, int tosize)
     return (blocks + (blocks < 0 ? -1 : 1)) / (tosize / fromsize);
 }
 
+#ifdef WINDOWS
+#include "od-win32/posixemu.h"
+#include <windows.h>
+int get_fs_usage (const TCHAR *path, const TCHAR *disk, struct fs_usage *fsp)
+{
+	TCHAR buf2[MAX_DPATH];
+	ULARGE_INTEGER FreeBytesAvailable, TotalNumberOfBytes, TotalNumberOfFreeBytes;
+
+	if (!GetFullPathName (path, sizeof buf2 / sizeof (TCHAR), buf2, NULL)) {
+		write_log (_T("GetFullPathName('%s') failed err=%d\n"), path, GetLastError ());
+		return -1;
+	}
+
+	if (!_tcsncmp (buf2, _T("\\\\"), 2)) {
+		TCHAR *p;
+		_tcscat (buf2, _T("\\"));
+		p = _tcschr (buf2 + 2, '\\');
+		if (!p)
+			return -1;
+		p = _tcschr (p + 1, '\\');
+		if (!p)
+			return -1;
+		p[1] = 0;
+	} else {
+		buf2[3] = 0;
+	}
+
+	if (!GetDiskFreeSpaceEx (buf2, &FreeBytesAvailable, &TotalNumberOfBytes, &TotalNumberOfFreeBytes)) {
+		write_log (_T("GetDiskFreeSpaceEx('%s') failed err=%d\n"), buf2, GetLastError ());
+		return -1;
+	}
+
+	fsp->total = TotalNumberOfBytes.QuadPart;
+	fsp->avail = TotalNumberOfFreeBytes.QuadPart;
+
+	return 0;
+}
+
+#else /* ! _WIN32 */
+
+int statfs ();
+
+#if HAVE_UNISTD_H
+# include <unistd.h>
+#endif
+
+#if HAVE_SYS_PARAM_H
+# include <sys/param.h>
+#endif
+
+#if HAVE_SYS_MOUNT_H
+# include <sys/mount.h>
+#endif
+
+#if HAVE_SYS_VFS_H
+# include <sys/vfs.h>
+#endif
+
+#if HAVE_SYS_FS_S5PARAM_H	/* Fujitsu UXP/V */
+# include <sys/fs/s5param.h>
+#endif
+
+#if defined (HAVE_SYS_FILSYS_H) && !defined (_CRAY)
+# include <sys/filsys.h>	/* SVR2 */
+#endif
+
+#if HAVE_FCNTL_H
+# include <fcntl.h>
+#endif
+
+#if HAVE_SYS_STATFS_H
+# include <sys/statfs.h>
+#endif
+
+#if HAVE_DUSTAT_H		/* AIX PS/2 */
+# include <sys/dustat.h>
+#endif
+
+#if HAVE_SYS_STATVFS_H		/* SVR4 */
+# include <sys/statvfs.h>
+int statvfs ();
+#endif
 
 /* Read LEN bytes at PTR from descriptor DESC, retrying if interrupted.
    Return the actual number of bytes read, zero for EOF, or negative
    for an error.  */
 
-int
-safe_read
-      (int desc,
-      char *ptr,
-      int len)
+static int safe_read (int desc, TCHAR *ptr, int len)
 {
   int n_chars;
 
@@ -81,20 +163,9 @@ safe_read
    Return 0 if successful, -1 if not.  When returning -1, ensure that
    ERRNO is either a system error value, or zero if DISK is NULL
    on a system that requires a non-NULL value.  */
-int
-get_fs_usage
-	(const char *path,
-	const char *disk,
-	struct fs_usage *fsp)
+#ifndef WINDOWS
+int get_fs_usage (const TCHAR *path, const TCHAR *disk, struct fs_usage *fsp)
 {
-	/* TODO: *** use RFs:Volume() to get free space *** */
-	/* Just a hack */
-	fsp->fsu_blocks = 507289;
-	fsp->fsu_bfree = 3435973;
-	fsp->fsu_bavail = 507289 / 2;
-	fsp->fsu_files = 3435973;
-	fsp->fsu_ffree = 3435973;
-		
 #ifdef STAT_STATFS3_OSF1
 # define CONVERT_BLOCKS(B) adjust_blocks ((B), fsd.f_fsize, 512)
 
@@ -140,7 +211,7 @@ get_fs_usage
   if (fd < 0)
     return -1;
   lseek (fd, (long) SUPERBOFF, 0);
-  if (safe_read (fd, (char *) &fsd, sizeof fsd) != sizeof fsd)
+  if (safe_read (fd, (TCHAR *) &fsd, sizeof fsd) != sizeof fsd)
     {
       close (fd);
       return -1;
@@ -229,13 +300,13 @@ get_fs_usage
 #if !defined(STAT_STATFS2_FS_DATA) && !defined(STAT_READ_FILSYS)
 				/* !Ultrix && !SVR2 */
 
-  fsp->fsu_blocks = CONVERT_BLOCKS (fsd.f_blocks);
-  fsp->fsu_bfree = CONVERT_BLOCKS (fsd.f_bfree);
-  fsp->fsu_bavail = CONVERT_BLOCKS (fsd.f_bavail);
-  fsp->fsu_files = fsd.f_files;
-  fsp->fsu_ffree = fsd.f_ffree;
+	fsp->total = (uae_s64)fsd.f_bsize * (uae_s64)fsd.f_blocks;
+	fsp->avail = (uae_s64)fsd.f_bsize * (uae_s64)fsd.f_bavail;
 
 #endif /* not STAT_STATFS2_FS_DATA && not STAT_READ_FILSYS */
 
   return 0;
 }
+#endif
+
+#endif /* ! _WIN32 */

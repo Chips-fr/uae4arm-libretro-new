@@ -16,7 +16,6 @@
 #include "autoconf.h"
 #include "filesys.h"
 #include "gui.h"
-#include "target.h"
 #include "gui_handling.h"
 
 
@@ -197,6 +196,8 @@ static void ExitEditFilesysVirtual(void)
 
 static void EditFilesysVirtualLoop(void)
 {
+  FocusBugWorkaround(wndEditFilesysVirtual);  
+
   while(!dialogFinished)
   {
     SDL_Event event;
@@ -206,32 +207,32 @@ static void EditFilesysVirtualLoop(void)
       {
         switch(event.key.keysym.sym)
         {
-          case SDLK_ESCAPE:
+          case VK_ESCAPE:
             dialogFinished = true;
             break;
             
-          case SDLK_UP:
+          case VK_UP:
             if(HandleNavigation(DIRECTION_UP))
               continue; // Don't change value when enter ComboBox -> don't send event to control
             break;
             
-          case SDLK_DOWN:
+          case VK_DOWN:
             if(HandleNavigation(DIRECTION_DOWN))
               continue; // Don't change value when enter ComboBox -> don't send event to control
             break;
 
-          case SDLK_LEFT:
+          case VK_LEFT:
             if(HandleNavigation(DIRECTION_LEFT))
               continue; // Don't change value when enter Slider -> don't send event to control
             break;
             
-          case SDLK_RIGHT:
+          case VK_RIGHT:
             if(HandleNavigation(DIRECTION_RIGHT))
               continue; // Don't change value when enter Slider -> don't send event to control
             break;
 
-          case SDLK_PAGEDOWN:
-          case SDLK_HOME:
+          case VK_X:
+          case VK_A:
             event.key.keysym.sym = SDLK_RETURN;
             gui_input->pushInput(event); // Fire key down
             event.type = SDL_KEYUP;  // and the key up
@@ -250,6 +251,7 @@ static void EditFilesysVirtualLoop(void)
     // Now we let the Gui object draw itself.
     uae_gui->draw();
     // Finally we update the screen.
+    wait_for_vsync();
     SDL_Flip(gui_screen);
   }  
 }
@@ -258,7 +260,7 @@ static void EditFilesysVirtualLoop(void)
 bool EditFilesysVirtual(int unit_no)
 {
   struct mountedinfo mi;
-  struct uaedev_config_info *uci;
+  struct uaedev_config_data *uci;
   std::string strdevname, strvolname, strroot;
   char tmp[32];
   
@@ -269,18 +271,21 @@ bool EditFilesysVirtual(int unit_no)
 
   if(unit_no >= 0)
   {
+    struct uaedev_config_info *ci;
+
     uci = &changed_prefs.mountconfig[unit_no];
+    ci = &uci->ci;
     get_filesys_unitconfig(&changed_prefs, unit_no, &mi);
 
-    strdevname.assign(uci->devname);
+    strdevname.assign(ci->devname);
     txtDevice->setText(strdevname);
-    strvolname.assign(uci->volname);
+    strvolname.assign(ci->volname);
     txtVolume->setText(strvolname);
-    strroot.assign(uci->rootdir);
+    strroot.assign(ci->rootdir);
     txtPath->setText(strroot);
-    chkReadWrite->setSelected(!uci->readonly);
-    chkAutoboot->setSelected(uci->bootpri != -128);
-    snprintf(tmp, 32, "%d", uci->bootpri >= -127 ? uci->bootpri : -127);
+    chkReadWrite->setSelected(!ci->readonly);
+    chkAutoboot->setSelected(ci->bootpri != BOOTPRI_NOAUTOBOOT);
+    snprintf(tmp, 32, "%d", ci->bootpri >= -127 ? ci->bootpri : -127);
     txtBootPri->setText(tmp);
   }
   else
@@ -295,19 +300,28 @@ bool EditFilesysVirtual(int unit_no)
   }
 
   EditFilesysVirtualLoop();
-  ExitEditFilesysVirtual();
   
   if(dialogResult)
   {
+    struct uaedev_config_info ci;
     int bp = tweakbootpri(atoi(txtBootPri->getText().c_str()), chkAutoboot->isSelected() ? 1 : 0, 0);
     extractPath((char *) txtPath->getText().c_str(), currentDir);
     
-    uci = add_filesys_config(&changed_prefs, unit_no, (char *) txtDevice->getText().c_str(), 
-      (char *) txtVolume->getText().c_str(), (char *) txtPath->getText().c_str(), 
-      !chkReadWrite->isSelected(), 0, 0, 0, 0, bp, 0, 0, 0);
-    if (uci)
-    	filesys_media_change (uci->rootdir, 1, uci);
+    uci_set_defaults(&ci, true);
+    strncpy(ci.devname, (char *) txtDevice->getText().c_str(), MAX_DPATH);
+    strncpy(ci.volname, (char *) txtVolume->getText().c_str(), MAX_DPATH);
+    strncpy(ci.rootdir, (char *) txtPath->getText().c_str(), MAX_DPATH);
+    ci.type = UAEDEV_DIR;
+    ci.readonly = !chkReadWrite->isSelected();
+    ci.bootpri = bp;
+    
+    uci = add_filesys_config(&changed_prefs, unit_no, &ci);
+    if (uci) {
+      filesys_media_change (ci.rootdir, 1, uci);
+    }
   }
+
+  ExitEditFilesysVirtual();
 
   return dialogResult;
 }

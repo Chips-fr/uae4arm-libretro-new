@@ -1,41 +1,60 @@
+#ifndef PANDORAUAE_SYSCONFIG_H
+#define PANDORAUAE_SYSCONFIG_H
 
 #define SUPPORT_THREADS
-#define MAX_DPATH 256
+#define MAX_DPATH PATH_MAX
 
 /* #define DRIVESOUND */
 /* #define GFXFILTER */
+//#define USE_SOFT_LONG_DOUBLE
+#define PACKAGE_STRING "UAE4ARM"
 
 /* #define DEBUGGER */
 #define FILESYS /* filesys emulation */
 #define UAE_FILESYS_THREADS
 #define AUTOCONFIG /* autoconfig support, fast ram, harddrives etc.. */
 #define JIT /* JIT compiler support */
-/* #define NATMEM_OFFSET natmem_offset */
+/* #define USE_JIT_FPU */
+/* #define NATMEM_OFFSET regs.natmem_offset */
 /* #define CATWEASEL */ /* Catweasel MK2/3 support */
 /* #define AHI */ /* AHI sound emulation */
 /* #define ENFORCER */ /* UAE Enforcer */
 #define ECS_DENISE /* ECS DENISE new features */
 #define AGA /* AGA chipset emulation (ECS_DENISE must be enabled) */
-/* #define CD32 */ /* CD32 emulation */
+#define CD32 /* CD32 emulation */
 /* #define CDTV */ /* CDTV emulation */
 /* #define PARALLEL_PORT */ /* parallel port emulation */
+/* #define PARALLEL_DIRECT */ /* direct parallel port emulation */
 /* #define SERIAL_PORT */ /* serial port emulation */
+/* #define SERIAL_ENET */ /* serial port UDP transport */
 /* #define SCSIEMU */ /* uaescsi.device emulation */
 /* #define UAESERIAL */ /* uaeserial.device emulation */
 #define FPUEMU /* FPU emulation */
 /* #define FPU_UAE */
-/* #define MMUEMU */
+/* #define WITH_SOFTFLOAT */
+/* #define MMUEMU */ /* Aranym 68040 MMU */
+/* #define FULLMMU */ /* Aranym 68040 MMU */
 #define CPUEMU_0 /* generic 680x0 emulation */
-#define CPUEMU_11 /* 68000+prefetch emulation */
-/* #define CPUEMU_12 */ /* cycle-exact cpu&blitter */
-/* #define ACTION_REPLAY */ /* Action Replay 1/2/3 support */
-#if !defined(RASPBERRY)
-#define PICASSO96 /* Picasso96 display card emulation */
-#define UAEGFX_INTERNAL /* built-in libs:picasso96/uaegfx.card */
-#endif
-/* #define BSDSOCKET */ /* bsdsocket.library emulation */
-/* #define CAPS */ /* CAPS-image support */
-/* #define FDI2RAW */ /* FDI 1.0 and 2.x image support */
+#define CPUEMU_11 /* 68000/68010 prefetch emulation */
+/* #define CPUEMU_13 */ /* 68000/68010 cycle-exact cpu&blitter */
+/* #define CPUEMU_20 */ /* 68020 prefetch */
+/* #define CPUEMU_21 */ /* 68020 "cycle-exact" + blitter */
+/* #define CPUEMU_22 */ /* 68030 prefetch */
+/* #define CPUEMU_23 */ /* 68030 "cycle-exact" + blitter */
+/* #define CPUEMU_24 */ /* 68060 "cycle-exact" + blitter */
+/* #define CPUEMU_25 */ /* 68040 "cycle-exact" + blitter */
+/* #define CPUEMU_31 */ /* Aranym 68040 MMU */
+/* #define CPUEMU_32 */ /* Previous 68030 MMU */
+/* #define CPUEMU_33 */ /* 68060 MMU */
+#define CPUEMU_40 /* generic 680x0 with JIT direct memory access */
+/* #define CPUEMU_50 */ /* generic 680x0 with indirect memory access */
+#define ACTION_REPLAY /* Action Replay 1/2/3 support */
+/* #define PICASSO96 */ /* Picasso96 display card emulation */
+/* #define UAEGFX_INTERNAL */ /* built-in libs:picasso96/uaegfx.card */
+#define BSDSOCKET /* bsdsocket.library emulation */
+#define CAPS /* CAPS-image support */
+/* #define SCP */ /* SuperCardPro */
+#define FDI2RAW /* FDI 1.0 and 2.x image support */
 /* #define AVIOUTPUT */ /* Avioutput support */
 /* #define PROWIZARD */ /* Pro-Wizard module ripper */
 /* #define ARCADIA */ /* Arcadia arcade system */
@@ -43,22 +62,58 @@
 /* #define LOGITECHLCD */ /* Logitech G15 LCD */
 #define SAVESTATE /* State file support */
 /* #define A2091 */ /* A590/A2091 SCSI */
-/* #define NCR */ /* A4000T/A4091 SCSI */
+/* #define A2065 */ /* A2065 Ethernet card */
+/* #define GFXBOARD */ /* Hardware graphics board */
+/* #define NCR */ /* A4000T/A4091, 53C710/53C770 SCSI */
+/* #define NCR9X */ /* 53C9X SCSI */
 /* #define SANA2 */ /* SANA2 network driver */
 /* #define AMAX */ /* A-Max ROM adapater emulation */
 /* #define RETROPLATFORM */ /* Cloanto RetroPlayer support */
-
-/* #define INPUT_RECORDER */ /* Use input recoder */
+/* #define WITH_CHD */
+/* #define WITH_LUA */ /* lua scripting */
+/* #define WITH_UAENATIVE */
+/* #define WITH_SLIRP */
+/* #define WITH_BUILTIN_SLIRP */
+/* #define WITH_TABLETLIBRARY */
+/* #define WITH_UAENET_PCAP */
+/* #define WITH_PPC */
+/* #define WITH_QEMU_CPU */
+/* #define WITH_TOCCATA */
+/* #define WITH_PCI */
+/* #define WITH_X86 */
 
 /* #define CUSTOM_SIMPLE */ /* simplified custom chipset emulation */
 /* #define CPUEMU_68000_ONLY */ /* drop 68010+ commands from CPUEMU_0 */
 /* #define ADDRESS_SPACE_24BIT */
+#define INPUTDEVICE_SIMPLE /* simplified inputdevice for faster emulation */
+
+/* #define WITH_SCSI_IOCTL */
+/* #define WITH_SCSI_SPTI */
+
+#define A_ZIP
+/* #define A_RAR */
+#define A_7Z
+#define A_LHA
+#define A_LZX
+#define A_DMS
+#define A_WRP
+
+#define UAE_RAND_MAX RAND_MAX
+
+#ifndef GFXFILTER
+#undef OPENGL
+#undef D3D
+#endif
+
+#include <stdint.h>
 
 #define SIZEOF_VOID_P 4
 
 #if !defined(AHI)
 #undef ENFORCER
 #endif
+
+typedef long uae_atomic;
 
 /* src/sysconfig.h.  Generated automatically by configure.  */
 /* src/sysconfig.h.in.  Generated automatically from configure.in by autoheader.  */
@@ -163,7 +218,7 @@
 
 /* Define if statfs takes 2 args and struct statfs has a field named f_bsize.
    [4.3BSD, SunOS 4, HP-UX, AIX PS/2]  */
-#define STAT_STATFS2_BSIZE 1
+/* #define STAT_STATFS2_BSIZE 1 */
 
 /* Define if statfs takes 2 args and struct statfs has a field named f_fsize.
    [4.4BSD, NetBSD]  */
@@ -177,7 +232,7 @@
 /* #undef STAT_STATFS4 */
 
 /* Define if there is a function named statvfs.  [SVR4]  */
-/* #undef STAT_STATVFS */
+#define STAT_STATVFS
 
 /* Define if the block counts reported by statfs may be truncated to 2GB
    and the correct values may be stored in the f_spare array.
@@ -207,7 +262,7 @@
 #define SIZEOF_DOUBLE 8
 
 #define HAVE_ISNAN
-#undef HAVE_ISINF
+#define HAVE_ISINF
 
 /* Define if you have the bcopy function.  */
 #define HAVE_BCOPY 1
@@ -269,9 +324,6 @@
 /* Define if you have the select function.  */
 #define HAVE_SELECT 1
 
-/* Define if you have the setitimer function.  */
-#define HAVE_SETITIMER 1
-
 /* Define if you have the sigaction function.  */
 #define HAVE_SIGACTION 1
 
@@ -301,9 +353,6 @@
 
 /* Define if you have the vsprintf function.  */
 #define HAVE_VSPRINTF 1
-
-/* Define if you have the <SDL/SDL.h> header file.  */
-/* #undef HAVE_SDL_SDL_H */
 
 /* Define if you have the <curses.h> header file.  */
 #define HAVE_CURSES_H 1
@@ -441,20 +490,60 @@
 /* #undef HAVE_WINDOWS_H */
 
 #define FSDB_DIR_SEPARATOR '/'
+#define FSDB_DIR_SEPARATOR_S "/"
+
+/* Define to 1 if `S_un' is a member of `struct in_addr'. */
+/* #un#def HAVE_STRUCT_IN_ADDR_S_UN */
+
+#ifdef _GCCRES_
+#undef _GCCRES_
+#endif
+
+#ifdef UAE4ALL_NO_USE_RESTRICT
+#define _GCCRES_
+#else
+#define _GCCRES_ __restrict__
+#endif
+
+#define __cdecl
 
 #define strcmpi(x,y) strcasecmp(x,y)
 #define stricmp(x,y) strcasecmp(x,y)
 
-#ifndef MAX_PATH
-#define MAX_PATH 256
-#endif
+#define MAX_PATH PATH_MAX
 
-#define WORDS_BIGENDIAN 1
 
 #define M68K_SPEED_7MHZ_CYCLES 0
 #define M68K_SPEED_14MHZ_CYCLES 1024
 #define M68K_SPEED_25MHZ_CYCLES 128
 
+typedef unsigned int WPARAM;
+typedef long LPARAM;
+typedef int SOCKET;
+#define INVALID_SOCKET -1
+
 typedef unsigned char boolean;
 #define FALSE 0
 #define TRUE 1
+
+typedef unsigned short USHORT;
+
+#define Sleep(x) usleep(x*1000)
+
+/* Some defines to make it easier to compare files with WinUAE */
+#include "uae/string.h"
+
+#ifndef UAE_TYPES_H
+#define _T(x)               x
+typedef char TCHAR;
+#endif
+#define _tzset()            tzset()
+#define _timezone           timezone
+#define _daylight           daylight
+#define _ftime(x)           ftime(x)
+#define _ftelli64(x)        ftello64(x)
+#define _fseeki64(x,y,z)    fseeko64(x,y,z)
+#define _wunlink(x)         unlink(x)
+#define _istalnum(x)        isalnum(x)
+
+#endif /* PANDORAUAE_SYSCONFIG_H */

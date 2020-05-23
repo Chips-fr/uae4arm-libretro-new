@@ -43,24 +43,6 @@
 #define RELY_ON_LOADSEG_DETECTION
  */
 
-#undef USE_COMPILER
-#undef RELY_ON_LOADSEG_DETECTION
-
-/*
- * Set USER_PROGRAMS_BEHAVE to 1 or 2 to indicate that you are only running
- * non-hardware banging programs which leave all the dirty work to the
- * Kickstart. This affects the compiler. Any program that is _not_ in the ROM
- * (i.e. everything but the Kickstart) will use faster memory access 
- * functions.
- * There is of course the problem that the Amiga doesn't really distinguish
- * between user programs and the kernel. Not all of the OS is in the ROM,
- * e.g. the parallel.device is on the disk and gets loaded into RAM at least
- * with Kickstart 1.3 (don't know about newer Kickstarts). So you probably
- * can't print, and some other stuff may also fail to work.
- * A useless option, really, given the way lots of Amiga software is written.
-#define USER_PROGRAMS_BEHAVE 0
- */
-
 /***************************************************************************
  * Operating system/machine specific options
  * Configure these for your CPU. The default settings should work on any
@@ -69,14 +51,73 @@
  */
 
 /*
- * Define this on PPro's, K6's and maybe other non-x86 CPUs.
-#undef MULTIPLICATION_PROFITABLE
+ * [pismy] defines virtual keys
+ * Still hard-coded but can be easily changed by recompiling the project...
+ * See codes here: https://www.libsdl.org/release/SDL-1.2.15/include/SDL_keysym.h
  */
 
 /*
- * PPros don't like branches. With this option, UAE tries to avoid them in some
- * places.
-#undef BRANCHES_ARE_EXPENSIVE
+ * Virtual Key for (A) button
+ * default: HOME (278)
  */
+#define VK_A SDLK_HOME
 
-#define MUSIC_VOLUME 80
+/*
+ * Virtual Key for (B) button
+ * default: END (279)
+ */
+#define VK_B SDLK_END
+
+/*
+ * Virtual Key for (X) button
+ * default: PAGEDOWN (281)
+ */
+#define VK_X SDLK_PAGEDOWN
+
+/*
+ * Virtual Key for (Y) button
+ * default: PAGEUP (280)
+ */
+#define VK_Y SDLK_PAGEUP
+
+/*
+ * Virtual Key for (Left shoulder) button
+ * default: RSHIFT (303)
+ */
+#define VK_L SDLK_RSHIFT
+
+/*
+ * Virtual Key for (Right shoulder) button
+ * default: RCTRL (305)
+ */
+#define VK_R SDLK_RCTRL
+
+/*
+ * Virtual Key for (up) button
+ * default: UP (273)
+ */
+#define VK_UP SDLK_UP
+
+/*
+ * Virtual Key for (down) button
+ * default: DOWN (274)
+ */
+#define VK_DOWN SDLK_DOWN
+
+/*
+ * Virtual Key for (right) button
+ * default: RIGHT (275)
+ */
+#define VK_RIGHT SDLK_RIGHT
+
+/*
+ * Virtual Key for (left) button
+ * default: LEFT (276)
+ */
+#define VK_LEFT SDLK_LEFT
+
+/*
+ * Virtual Key for (ESC) button
+ * default: ESC (27)
+ */
+#define VK_ESCAPE SDLK_ESCAPE

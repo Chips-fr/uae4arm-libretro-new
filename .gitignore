@@ -1,4 +1,8 @@
+*.so
 *.o
 conf/*.uae
 conf/*.conf
 kickstarts/*.rom
+savestates/*.uss
+screenshots/*.png
+/.project
