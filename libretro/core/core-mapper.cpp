@@ -646,9 +646,9 @@ else{
 
    }
 
-   if(MOUSE_EMULATED==1){
+   if(MOUSE_EMULATED==1 && SHOWKEY==-1 ){
 
-	  if(slowdown>0 && pauseg!=0 )return 1;
+      if(slowdown>0 && pauseg!=0 )return 1;
 
       if (input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT))rmouse_x += PAS;
       if (input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT))rmouse_x -= PAS;
