@@ -668,17 +668,17 @@ void overwrite_with_retroarch_opt(void)
 {
    // Save options coming from libretro options...
    currprefs.gfx_size.width =   tmp_prefs.gfx_size.width;
-   currprefs.gfx_size.height =  tmp_prefs.gfx_size.height ;
+   currprefs.gfx_size.height =  tmp_prefs.gfx_size.height;
    currprefs.gfx_resolution =   tmp_prefs.gfx_resolution;
    currprefs.leds_on_screen =   tmp_prefs.leds_on_screen;
-   //currprefs.cpu_model =        tmp_prefs.cpu_model;
-   //currprefs.address_space_24 = tmp_prefs.address_space_24;
-   //currprefs.chipset_mask =     tmp_prefs.chipset_mask;
-   //currprefs.chipmem_size =     tmp_prefs.chipmem_size;
-   //strcpy (currprefs.romfile,   tmp_prefs.romfile);
-   //currprefs.m68k_speed =       tmp_prefs.m68k_speed;
-   //currprefs.cpu_compatible =   tmp_prefs.cpu_compatible;
-   //currprefs.floppy_speed =     tmp_prefs.floppy_speed;
+   currprefs.cpu_model =        tmp_prefs.cpu_model;
+   currprefs.address_space_24 = tmp_prefs.address_space_24;
+   currprefs.chipset_mask =     tmp_prefs.chipset_mask;
+   currprefs.chipmem_size =     tmp_prefs.chipmem_size;
+   strcpy (currprefs.romfile,   tmp_prefs.romfile);
+   currprefs.m68k_speed =       tmp_prefs.m68k_speed;
+   currprefs.cpu_compatible =   tmp_prefs.cpu_compatible;
+   currprefs.floppy_speed =     tmp_prefs.floppy_speed;
 }
 
 static int real_main2 (int argc, TCHAR **argv)
@@ -717,7 +717,9 @@ static int real_main2 (int argc, TCHAR **argv)
 
   if (restart_config[0])
   {
+#ifdef __LIBRETRO__
 	  overwrite_with_retroarch_opt();
+#endif
 	  parse_cmdline_and_init_file (argc, argv);
   }
   else

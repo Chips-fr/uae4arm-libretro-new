@@ -5,6 +5,7 @@
 #include "sysconfig.h"
 #include "sysdeps.h"
 #include "options.h"
+#include "custom.h"
 
 cothread_t mainThread;
 cothread_t emuThread;
@@ -45,6 +46,31 @@ static retro_audio_sample_t audio_cb;
 static retro_audio_sample_batch_t audio_batch_cb;
 static retro_environment_t environ_cb;
 
+// Amiga default kickstarts
+
+#define A500_ROM        "kick34005.A500"
+#define A600_ROM        "kick40063.A600"
+#define A1200_ROM       "kick40068.A1200"
+
+static char uae_machine[256];
+static char uae_kickstart[16];
+static char uae_config[1024];
+
+
+#ifdef _WIN32
+#define RETRO_PATH_SEPARATOR            "\\"
+// Windows also support the unix path separator
+#define RETRO_PATH_SEPARATOR_ALT        "/"
+#else
+#define RETRO_PATH_SEPARATOR            "/"
+#endif
+
+void path_join(char* out, const char* basedir, const char* filename)
+{
+   snprintf(out, MAX_PATH, "%s%s%s", basedir, RETRO_PATH_SEPARATOR, filename);
+}
+
+
 void retro_set_environment(retro_environment_t cb)
 {
    environ_cb = cb;
@@ -67,18 +93,10 @@ void retro_set_environment(retro_environment_t cb)
   cb( RETRO_ENVIRONMENT_SET_CONTROLLER_INFO, (void*)ports );
 
   struct retro_variable variables[] = {
-
-      {
-         "uae4arm-rpi_resolution",
-//         "Internal resolution; 720x568|800x480|640x524|640x480|640x512|640x540|768x480|640x256|640x262|640x270|768x270",
-         "Internal resolution; 640x480|320x240|320x256|320x262|640x240|640x256|640x262|640x270|768x270",
-      },
-
-      {
-         "uae4arm-rpi_leds_on_screen",
-         "Led:; on|off",
-      },
-
+      { "uae4arm_model",          "Model; A500|A600|A1200", },
+      { "uae4arm_resolution",     "Internal resolution; 640x270|320x240|320x256|320x262|640x240|640x256|640x262|640x270|768x270", },
+      { "uae4arm_leds_on_screen", "Leds on screen; on|off", },
+      { "uae4arm_floppy_speed",   "Floppy speed; 100|200|400|800", },
       { NULL, NULL },
    };
 
@@ -90,7 +108,7 @@ static void update_variables(void)
 
    struct retro_variable var;
 
-   var.key = "uae4arm-rpi_resolution";
+   var.key = "uae4arm_resolution";
    var.value = NULL;
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
@@ -119,7 +137,7 @@ static void update_variables(void)
 
    }
 
-   var.key = "uae4arm-rpi_leds_on_screen";
+   var.key = "uae4arm_leds_on_screen";
    var.value = NULL;
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
@@ -127,6 +145,66 @@ static void update_variables(void)
       if (strcmp(var.value, "on") == 0)  changed_prefs.leds_on_screen = 1;
       if (strcmp(var.value, "off") == 0) changed_prefs.leds_on_screen = 0;
    }
+
+   var.key = "uae4arm_model";
+   var.value = NULL;
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (strcmp(var.value, "A500") == 0)
+      {
+         //strcat(uae_machine, A500);
+         //strcpy(uae_kickstart, A500_ROM);
+         //changed_prefs.cpu_type="68000";
+         
+         changed_prefs.cpu_model = 68000;
+         changed_prefs.m68k_speed = M68K_SPEED_7MHZ_CYCLES;
+         changed_prefs.cpu_compatible = 0;
+         changed_prefs.chipmem_size = 2 * 0x80000;
+         changed_prefs.address_space_24 = 1;
+         changed_prefs.chipset_mask = CSMASK_ECS_AGNUS;
+         //strcpy(changed_prefs.romfile, A500_ROM);
+         path_join(changed_prefs.romfile, retro_system_directory, A500_ROM);
+      }
+      if (strcmp(var.value, "A600") == 0)
+      {
+         //strcat(uae_machine, A600);
+         //strcpy(uae_kickstart, A600_ROM);
+         changed_prefs.cpu_model = 68000;
+         changed_prefs.chipmem_size = 2 * 0x80000;
+         changed_prefs.m68k_speed = M68K_SPEED_7MHZ_CYCLES;
+         changed_prefs.cpu_compatible = 0;
+         changed_prefs.address_space_24 = 1;
+         changed_prefs.chipset_mask = CSMASK_ECS_DENISE | CSMASK_ECS_AGNUS;
+         //strcpy(changed_prefs.romfile, A600_ROM);
+         path_join(changed_prefs.romfile, retro_system_directory, A600_ROM);
+      }
+      if (strcmp(var.value, "A1200") == 0)
+      {
+         //strcat(uae_machine, A1200);
+         //strcpy(uae_kickstart, A1200_ROM);
+         //changed_prefs.cpu_type="68ec020";
+         changed_prefs.cpu_model = 68020;
+         changed_prefs.chipmem_size = 4 * 0x80000;
+         changed_prefs.m68k_speed = M68K_SPEED_14MHZ_CYCLES;
+         changed_prefs.cpu_compatible = 0;
+         changed_prefs.address_space_24 = 1;
+         changed_prefs.chipset_mask = CSMASK_AGA | CSMASK_ECS_DENISE | CSMASK_ECS_AGNUS;
+         //strcpy(changed_prefs.romfile, A1200_ROM);
+         path_join(changed_prefs.romfile, retro_system_directory, A1200_ROM);
+      }
+   }
+
+
+
+
+   var.key = "uae4arm_floppy_speed";
+   var.value = NULL;
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      changed_prefs.floppy_speed=atoi(var.value);
+   }
+   
+   //fixup_prefs (&changed_prefs);
 }
 
 static void retro_wrap_emulator()
@@ -181,22 +259,22 @@ void retro_reset(void){
 }
 
 void retro_init(void)
-{    	
+{
    const char *system_dir = NULL;
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &system_dir) && system_dir)
    {
-      // if defined, use the system directory			
-      retro_system_directory=system_dir;		
-   }		   
+      // if defined, use the system directory
+      retro_system_directory=system_dir;
+   }
 
    const char *content_dir = NULL;
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY, &content_dir) && content_dir)
    {
-      // if defined, use the system directory			
-      retro_content_directory=content_dir;		
-   }			
+      // if defined, use the system directory
+      retro_content_directory=content_dir;
+   }		
 
    const char *save_dir = NULL;
 
@@ -229,7 +307,7 @@ void retro_init(void)
    if (!environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt))
    {
       fprintf(stderr, "PIXEL FORMAT is not supported.\n");
-LOGI("PIXEL FORMAT is not supported.\n");
+      LOGI("PIXEL FORMAT is not supported.\n");
       exit(0);
    }
 
@@ -261,7 +339,7 @@ LOGI("PIXEL FORMAT is not supported.\n");
 
 extern void main_exit();
 void retro_deinit(void)
-{	 
+{
    Emu_uninit(); 
 
    co_switch(emuThread);
@@ -270,7 +348,7 @@ void retro_deinit(void)
    co_switch(mainThread);
    LOGI("exit main\n");
    if(emuThread)
-   {	 
+   {
       co_delete(emuThread);
       emuThread = 0;
    }
@@ -301,7 +379,7 @@ void retro_get_system_info(struct retro_system_info *info)
    info->library_version  = "0.5";
    info->valid_extensions = "adf|dms|zip|ipf|hdf|lha|uae";
    info->need_fullpath    = true;
-   info->block_extract = false;
+   info->block_extract    = true;
 }
 
 void retro_get_system_av_info(struct retro_system_av_info *info)
@@ -348,9 +426,7 @@ void retro_run(void)
 
    if(pauseg==0)
    {
-
-
-		if(SHOWKEY )retro_virtualkb();
+      if(SHOWKEY )retro_virtualkb();
    }
 
    video_cb(Retro_Screen,retrow,retroh * 2,retrow<<PIXEL_BYTES);

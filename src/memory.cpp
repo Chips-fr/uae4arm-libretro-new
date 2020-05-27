@@ -1101,7 +1101,7 @@ static void restore_roms(void)
 	if (!load_kickstart ()) {
     if (_tcslen (currprefs.romfile) > 0) {
 			error_log (_T("Failed to open '%s'\n"), currprefs.romfile);
-  		notify_user (NUMSG_NOROM);
+  		//notify_user (NUMSG_NOROM);
     }
 		load_kickstart_replacement ();
 	} else {
