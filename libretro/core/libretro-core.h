@@ -52,6 +52,7 @@ extern int pauseg;
 #define LOGI printf
 #endif
 
+#if 0
 #define NPLGN 12
 #define NLIGN 5
 #define NLETT 5
@@ -66,6 +67,11 @@ extern int pauseg;
 
 #define STAT_DECX 120
 #define STAT_YSZ  20
+#else
+#define NPLGN 20
+#define NLIGN 6
+#define NLETT 5
+#endif
 
 #ifndef  RENDER16B
 #define RGB565(r, g, b)  (((r) << (5+16)) | ((g) << (5+8)) | (b<<5))

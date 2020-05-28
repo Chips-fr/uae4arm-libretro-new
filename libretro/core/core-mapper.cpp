@@ -1,6 +1,13 @@
 #include "libretro.h"
 #include "libretro-core.h"
 #include "retroscreen.h"
+#include "graph.h"
+
+#include "sysconfig.h"
+#include "sysdeps.h"
+#include "config.h"
+#include "options.h"
+#include "inputdevice.h"
 
 //FIXME
 unsigned char uae4all_keystate[320];
@@ -180,6 +187,9 @@ void texture_uninit(void)
 
 void texture_init(void)
 {
+   initsmfont();
+   initmfont();
+
    memset(Retro_Screen, 0, sizeof(Retro_Screen));
    memset(old_Key_Sate ,0, sizeof(old_Key_Sate));
 
@@ -201,31 +211,44 @@ extern void vkbd_key(int key,int pressed);
 #include "libretro-keymap.h"
 extern int keycode2amiga(int prKeySym);
 
+typedef struct {
+	char norml[NLETT];
+	char shift[NLETT];
+	int val;	
+	int box;
+	int color;
+} Mvk;
+
+extern Mvk MVk[NPLGN*NLIGN*2];
 
 void retro_key_down(int key)
 {
   int iAmigaKeyCode = keyboard_translation[key];
   //LOGI("kbdkey(%d)=%d pressed\n",key,iAmigaKeyCode);
-  unsigned char kkey = iAmigaKeyCode | 0x80;
+  //unsigned char kkey = iAmigaKeyCode | 0x80;
 
   if (iAmigaKeyCode >= 0)
+
   	if (!uae4all_keystate[iAmigaKeyCode])
   	{
   		uae4all_keystate[iAmigaKeyCode] = 1;
-  		record_key(iAmigaKeyCode << 1);
+		inputdevice_do_keyboard(iAmigaKeyCode, 1);
+  		//record_key(iAmigaKeyCode << 1);
+ 
   	}
-  				
+		
 }
 
 void retro_key_up(int key)
 {
   int iAmigaKeyCode = keyboard_translation[key];
   //LOGI("kbdkey(%d)=%d released\n",key,iAmigaKeyCode);
-  unsigned char kkey = iAmigaKeyCode | 0x00;
+//  unsigned char kkey = iAmigaKeyCode | 0x00;
   if (iAmigaKeyCode >= 0)
   {
 	uae4all_keystate[iAmigaKeyCode] = 0;
-  	record_key((iAmigaKeyCode << 1) | 1);
+	inputdevice_do_keyboard(iAmigaKeyCode, 0);
+  	//record_key((iAmigaKeyCode << 1) | 1);
   }
 
 }
@@ -240,22 +263,24 @@ void vkbd_key(int key,int pressed){
 	if(pressed){
 
 		if(SHIFTON==1){
+			inputdevice_do_keyboard(AK_LSH, 1);
 			uae4all_keystate[AK_LSH] = 1;
-			record_key((AK_LSH << 1));
+			//record_key((AK_LSH << 1));
 		}
-
+		inputdevice_do_keyboard(key2, 1);
 		uae4all_keystate[key2] = 1;
-		record_key(key2 << 1);
+		//record_key(key2 << 1);
 	}
 	else {
 
 		if(SHIFTON==1){
+			inputdevice_do_keyboard(AK_LSH, 0);
 			uae4all_keystate[AK_LSH] = 0;
-			record_key((AK_LSH << 1) | 1);
+			//record_key((AK_LSH << 1) | 1);
 		}	
-	
+		inputdevice_do_keyboard(key2, 0);
 		uae4all_keystate[key2] = 0;
-		record_key((key2 << 1) | 1);		
+		//record_key((key2 << 1) | 1);		
 	}
 
 }
@@ -268,13 +293,15 @@ void retro_virtualkb(void)
    static int oldi=-1;
    static int vkx=0,vky=0;
 
+   int page= (NPAGE==-1) ? 0 : NPLGN*NLIGN;
+
    if(oldi!=-1)
    {
       vkbd_key(oldi,0);
       oldi=-1;
    }
 
-   if(SHOWKEY==1)
+     if(SHOWKEY==1)
    {
       static int vkflag[5]={0,0,0,0,0};		
 
@@ -284,6 +311,12 @@ void retro_virtualkb(void)
       {
          vkflag[0]=0;
          vky -= 1; 
+	 if(vky<0)vky=NLIGN-1;
+
+	 while(MVk[(vky*NPLGN)+vkx+page].box==0){
+         	vkx -= 1;
+	 	if(vkx<0)vkx=NPLGN-1;
+      	 }
       }
 
       if ( input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_DOWN) && vkflag[1]==0 )
@@ -292,6 +325,12 @@ void retro_virtualkb(void)
       {
          vkflag[1]=0;
          vky += 1; 
+	 if(vky>NLIGN-1)vky=0;
+
+	 while(MVk[(vky*NPLGN)+vkx+page].box==0){
+         	vkx -= 1;
+	 	if(vkx<0)vkx=NPLGN-1;
+      	 }
       }
 
       if ( input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT) && vkflag[2]==0 )
@@ -300,6 +339,12 @@ void retro_virtualkb(void)
       {
          vkflag[2]=0;
          vkx -= 1;
+	 if(vkx<0)vkx=NPLGN-1;
+
+	 while(MVk[(vky*NPLGN)+vkx+page].box==0){
+         	vkx -= 1;
+	 	if(vkx<0)vkx=NPLGN-1;
+      	 }
       }
 
       if ( input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT) && vkflag[3]==0 )
@@ -308,6 +353,13 @@ void retro_virtualkb(void)
       {
          vkflag[3]=0;
          vkx += 1;
+	 if(vkx>NPLGN-1)vkx=0;
+
+	 while(MVk[(vky*NPLGN)+vkx+page].box==0){
+         	vkx += 1;
+	 	if(vkx>NPLGN-1)vkx=0;
+      	 }
+
       }
 
       if(vkx<0)vkx=NPLGN-1;
@@ -486,23 +538,52 @@ int Retro_PollEvent()
  
       if(pauseg==0)
       { // if emulation running
-
+/*
       // Joy mode for first/main joystick.
-      for(i=RETRO_DEVICE_ID_JOYPAD_B;i<=RETRO_DEVICE_ID_JOYPAD_A;i++)
+      for(i=RETRO_DEVICE_ID_JOYPAD_UP;i<=RETRO_DEVICE_ID_JOYPAD_A;i++)
       {
          if( input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, i))
 	 {
             MXjoy[0] |= vbt[i]; // Joy press
 	 }
       }
+               
+	if( input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, 0))
+	 {
+            MXjoy[0] |= vbt[5]; // Joy press
+	 }
+*/
+{
+int    up  = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_UP);
+int  down  = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_DOWN);
+int  left  = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_LEFT);
+int  right = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_RIGHT);
+int b1	   = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_A);
+int b2	   = input_state_cb(0, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_B);
 
-      // second joystick.
+setjoybuttonstate (0, 0, b1);
+setjoybuttonstate (0, 1, b2);
+
+int axis = (left ? -32767 : (right ? 32767 : 0));
+setjoystickstate (0, 0, axis, 32767);
+axis = (up ? -32767 : (down ? 32767 : 0));
+setjoystickstate (0, 1, axis, 32767);
+/*
+setjoystickstate (0, 1, up ? -32767 : 0, 32767);
+setjoystickstate (0, 1, down ? 32767 : 0, 32767);
+setjoystickstate (0, 0, left ? -32767 : 0, 32767);
+setjoystickstate (0, 0, right ? 32767 : 0, 32767);
+*/
+}
+/*      
+	// second joystick.
       for(i=RETRO_DEVICE_ID_JOYPAD_B;i<=RETRO_DEVICE_ID_JOYPAD_A;i++)
       {
          if( input_state_cb(1, RETRO_DEVICE_JOYPAD, 0, i))
 	 {
             MXjoy[1] |= vbt[i]; // Joy press
 	 }
+
          if ((0 != MXjoy[1]) && (0 == second_joystick_enable))
          {
             LOGI("Switch to joystick mode for Port 0.\n");
@@ -510,6 +591,25 @@ int Retro_PollEvent()
             second_joystick_enable = 1;
          }
       }
+*/
+
+if(second_joystick_enable){
+
+int    up  = input_state_cb(1, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_UP);
+int  down  = input_state_cb(1, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_DOWN);
+int  left  = input_state_cb(1, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_LEFT);
+int  right = input_state_cb(1, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_RIGHT);
+int b1	   = input_state_cb(1, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_A);
+int b2	   = input_state_cb(1, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_B);
+
+setjoybuttonstate (1, 0, b1);
+setjoybuttonstate (1, 1, b2);
+setjoystickstate (1, 1, up ? -32767 : 0, 32767);
+setjoystickstate (1, 1, down ? 32767 : 0, 32767);
+setjoystickstate (1, 0, left ? -32767 : 0, 32767);
+setjoystickstate (1, 0, right ? 32767 : 0, 32767);
+
+}
 
 }// if pauseg=0
 else{
@@ -589,7 +689,7 @@ else{
    if ((mouse_l || mouse_r) && (second_joystick_enable))
    {
       mouse_l = mouse_r = 0;
-      LOGI("Switch to mouse mode for Port 0.\n");
+      LOGI("Switch to mouse mode for Port 0 (2).\n");
       second_joystick_enable = 0;   // disble 2nd joystick if mouse activated...
    }
 
@@ -600,24 +700,29 @@ else{
       mmbL=1;		
       pushi=1;
       touch=1;
-
+      setmousebuttonstate (0, 0,mmbL); // A button -> left mouse
+LOGI("mouse left. %d %d\n",currprefs.gfx_size.width, currprefs.gfx_size.height << currprefs.gfx_vresolution);
    }
    else if(mmbL==1 && !mouse_l) {
 
       mmbL=0;
       pushi=0;
       touch=-1;
+      setmousebuttonstate (0, 0,mmbL); // A button -> left mouse
    }
 
    if(mmbR==0 && mouse_r){
       mmbR=1;	
       pushi=1;
-      touch=1;	
+      touch=1;	     
+      setmousebuttonstate (0, 1, mmbR); // B button -> right mouse
+LOGI("mouse right.(%d,%d) %d %d\n",gmx,gmy,rmouse_x,currprefs.input_joymouse_multiplier / 2);
    }
    else if(mmbR==1 && !mouse_r) {
       mmbR=0;
       pushi=0;
       touch=-1;
+      setmousebuttonstate (0, 1, mmbR); // B button -> right mouse
    }
 
    gmx+=rmouse_x;
@@ -626,6 +731,18 @@ else{
    if(gmx>retrow-1)gmx=retrow-1;
    if(gmy<0)gmy=0;
    if(gmy>retroh-1)gmy=retroh-1;
+
+#if 0
+//ABS
+//FIXME NOT WORKING FINE
+   setmousestate(0, 0, gmx, 1);
+   setmousestate(0, 1, gmy, 1);
+#else
+//REL
+  int mouseScale = currprefs.input_joymouse_multiplier / 2;
+  setmousestate(0, 0, rmouse_x * mouseScale, 0);
+  setmousestate(0, 1, rmouse_y * mouseScale, 0);
+#endif
 
    lastmx +=rmouse_x;
    lastmy +=rmouse_y;

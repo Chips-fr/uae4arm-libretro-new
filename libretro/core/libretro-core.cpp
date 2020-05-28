@@ -70,13 +70,13 @@ void retro_set_environment(retro_environment_t cb)
   struct retro_variable variables[] = {
 
       {
-         "uae4arm_resolution",
+         "uae4arm-rpi_resolution",
          "Internal resolution; 720x568|800x480|640x524|640x480|640x512|640x540|768x480|640x256|640x262|640x270|768x270",
 //         "Internal resolution; 640x480|320x240|320x256|320x262|640x240|640x256|640x262|640x270|768x270",
       },
 
       {
-         "uae4arm_leds_on_screen",
+         "uae4arm-rpi_leds_on_screen",
          "Led:; on|off",
       },
 
@@ -91,7 +91,7 @@ static void update_variables(void)
 
    struct retro_variable var;
 
-   var.key = "uae4arm_resolution";
+   var.key = "uae4arm-rpi_resolution";
    var.value = NULL;
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
@@ -120,7 +120,7 @@ static void update_variables(void)
 
    }
 
-   var.key = "uae4arm_leds_on_screen";
+   var.key = "uae4arm-rpi_leds_on_screen";
    var.value = NULL;
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
