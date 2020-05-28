@@ -604,11 +604,18 @@ int b2	   = input_state_cb(1, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_B);
 
 setjoybuttonstate (1, 0, b1);
 setjoybuttonstate (1, 1, b2);
+
+
+int axis = (left ? -32767 : (right ? 32767 : 0));
+setjoystickstate (1, 0, axis, 32767);
+axis = (up ? -32767 : (down ? 32767 : 0));
+setjoystickstate (1, 1, axis, 32767);
+/*
 setjoystickstate (1, 1, up ? -32767 : 0, 32767);
 setjoystickstate (1, 1, down ? 32767 : 0, 32767);
 setjoystickstate (1, 0, left ? -32767 : 0, 32767);
 setjoystickstate (1, 0, right ? 32767 : 0, 32767);
-
+*/
 }
 
 }// if pauseg=0
