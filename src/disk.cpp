@@ -1037,15 +1037,6 @@ static int drive_insert (drive * drv, struct uae_prefs *p, int dnum, const TCHAR
   	return 0;
   }
 
-
-/*
-    memmove (currprefs.df[dnum], fname, 255);
-    currprefs.df[dnum][255] = 0;
-    strncpy (changed_prefs.df[dnum], fname, 255);
-    changed_prefs.df[dnum][255] = 0;
-    strcpy (drv->newname, fname);
-*/
-
 	if (!fake) {
 		if (currprefs.floppyslots[dnum].df != fname) {
       _tcsncpy (currprefs.floppyslots[dnum].df, fname, 255);
@@ -1057,7 +1048,6 @@ static int drive_insert (drive * drv, struct uae_prefs *p, int dnum, const TCHAR
 	  changed_prefs.floppyslots[dnum].forcedwriteprotect = forcedwriteprotect;
     _tcscpy (drv->newname, fname);
 	  drv->newnamewriteprotected = forcedwriteprotect;
-
     gui_filename (dnum, fname);
 	}
 

@@ -28,11 +28,6 @@
 #include "filesys.h"
 #include "fsdb.h"
 #include "disk.h"
-
-#if defined(__LIBRETRO__)
-extern int retroh,retrow;  // Todo: need a proper include
-#endif
-
 #include "blkdev.h"
 #include "calc.h"
 #include "gfxboard.h"
@@ -4448,24 +4443,14 @@ void default_prefs (struct uae_prefs *p, bool reset, int type)
   p->cachesize = 0;
 
   p->gfx_framerate = 0;
-
-#ifdef __LIBRETRO__
-  p->gfx_size.width = retrow;
-  p->gfx_size.height = retroh;
-#elif PANDORA_SPECIFIC
+#ifdef PANDORA_SPECIFIC
   p->gfx_size.width = 320;
   p->gfx_size.height = 240;
 #else
   p->gfx_size.width = 640;
   p->gfx_size.height = 262;
 #endif
-
-#ifdef __LIBRETRO__
-  p->gfx_resolution = p->gfx_size.width > 600 ? 1 : 0;
-#else
-  p->gfx_resolution = RES_LORES;
-#endif
-
+  p->gfx_resolution = p->gfx_size.width > 600 ? RES_HIRES : RES_LORES;
 #ifdef RASPBERRY
   p->gfx_correct_aspect = 1;
   p->gfx_fullscreen_ratio = 100;

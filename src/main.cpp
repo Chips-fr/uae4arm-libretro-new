@@ -56,7 +56,7 @@ extern int pauseg;
 
 long int version = 256*65536L*UAEMAJOR + 65536L*UAEMINOR + UAESUBREV;
 
-struct uae_prefs currprefs, changed_prefs; 
+struct uae_prefs currprefs, changed_prefs, tmp_prefs;
 int config_changed;
 
 bool no_gui = 0;
@@ -611,10 +611,10 @@ static void parse_cmdline_and_init_file (int argc, TCHAR **argv)
   parse_cmdline_2 (argc, argv);
 
 	_tcscat (optionsfile, restart_config);
-
 	if (! target_cfgfile_load (&currprefs, optionsfile, CONFIG_TYPE_DEFAULT, default_config)) {
   	write_log (_T("failed to load config '%s'\n"), optionsfile);
   }
+
 	fixup_prefs (&currprefs, false);
 
   parse_cmdline (argc, argv);
@@ -663,6 +663,24 @@ void leave_program (void)
     do_leave_program ();
 }
 
+
+void overwrite_with_retroarch_opt(void)
+{
+   // Save options coming from libretro options...
+   currprefs.gfx_size.width =   tmp_prefs.gfx_size.width;
+   currprefs.gfx_size.height =  tmp_prefs.gfx_size.height ;
+   currprefs.gfx_resolution =   tmp_prefs.gfx_resolution;
+   currprefs.leds_on_screen =   tmp_prefs.leds_on_screen;
+   //currprefs.cpu_model =        tmp_prefs.cpu_model;
+   //currprefs.address_space_24 = tmp_prefs.address_space_24;
+   //currprefs.chipset_mask =     tmp_prefs.chipset_mask;
+   //currprefs.chipmem_size =     tmp_prefs.chipmem_size;
+   //strcpy (currprefs.romfile,   tmp_prefs.romfile);
+   //currprefs.m68k_speed =       tmp_prefs.m68k_speed;
+   //currprefs.cpu_compatible =   tmp_prefs.cpu_compatible;
+   //currprefs.floppy_speed =     tmp_prefs.floppy_speed;
+}
+
 static int real_main2 (int argc, TCHAR **argv)
 {
   printf("Uae4arm v0.5 for Raspberry Pi by Chips\n");
@@ -681,11 +699,13 @@ static int real_main2 (int argc, TCHAR **argv)
 #ifdef USE_SDL
   SDL_Init(SDL_INIT_NOPARACHUTE | SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
 #endif
+
+  tmp_prefs=changed_prefs;
+
 #endif
   set_config_changed ();
  
   keyboard_settrans();
-
   if (restart_config[0]) {
 	  default_prefs (&currprefs, true, 0);
 		fixup_prefs (&currprefs, true);
@@ -696,7 +716,10 @@ static int real_main2 (int argc, TCHAR **argv)
   }
 
   if (restart_config[0])
+  {
+	  overwrite_with_retroarch_opt();
 	  parse_cmdline_and_init_file (argc, argv);
+  }
   else
   	currprefs = changed_prefs;
 
@@ -793,7 +816,9 @@ void real_main (int argc, TCHAR **argv)
 	default_config = 1;
 
   while (restart_program) {
+#ifndef __LIBRETRO__
 	  changed_prefs = currprefs;
+#endif
 	  real_main2 (argc, argv);
     leave_program ();
 	  quit_program = 0;

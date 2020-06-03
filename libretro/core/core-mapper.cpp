@@ -50,10 +50,6 @@ unsigned long  Ktime=0 , LastFPSTime=0;
 	unsigned int Retro_Screen[1280*1024];
 #endif 
 
-//SOUND
-short signed int SNDBUF[1024*2];
-int snd_sampler = 44100 / 50;
-
 //PATH
 char RPATH[512];
 

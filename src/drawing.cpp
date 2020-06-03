@@ -103,7 +103,6 @@ static int linedbl;
 
 int interlace_seen;
 
-
 /* Lookup tables for dual playfields.  The dblpf_*1 versions are for the case
    that playfield 1 has the priority, dbplpf_*2 are used if playfield 2 has
    priority.  If we need an array for non-dual playfield mode, it has no number.  */
@@ -2367,7 +2366,6 @@ void vsync_handle_redraw (void)
     if(render_tid) {
       write_comm_pipe_u32 (render_pipe, RENDER_SIGNAL_FRAME_DONE, 1);
       uae_sem_wait (&render_sem);
-
     }
   }
 
@@ -2505,7 +2503,6 @@ prSDLScreen = (SDL_Surface*)malloc( sizeof(*prSDLScreen) );
   if(render_tid == 0 && render_pipe != 0 && render_sem != 0) {
     uae_start_thread(_T("render"), render_thread, NULL, &render_tid);
   }
-
 
 #ifdef PICASSO96
   if (!isrestore ()) {

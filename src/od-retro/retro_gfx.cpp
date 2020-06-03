@@ -27,13 +27,6 @@
 #include <linux/fb.h>
 #include <sys/ioctl.h>
 
-#ifndef OMAPFB_WAITFORVSYNC
-#define OMAPFB_WAITFORVSYNC _IOW('F', 0x20, unsigned int)
-#endif
-#ifndef OMAPFB_WAITFORVSYNC_FRAME
-#define OMAPFB_WAITFORVSYNC_FRAME _IOWR('O', 70, unsigned int)
-#endif
-
 extern int retrow,retroh;
 
 #include "libretro-core.h"
@@ -151,15 +144,13 @@ void RefreshLiveInfo()
 
 void InitAmigaVidMode(struct uae_prefs *p)
 {
-changed_prefs.leds_on_screen = 0;
-
   LOGI("retro:(%d,%d) gfx(%d,%d) res %i,led:%d\n",retrow,retroh,p->gfx_size.width,p->gfx_size.height,p->gfx_resolution,currprefs.leds_on_screen);
-	/* Initialize structure for Amiga video modes */
-	gfxvidinfo.drawbuffer.pixbytes = 2;
-	gfxvidinfo.drawbuffer.bufmem = (uae_u8 *)Retro_Screen;
+  /* Initialize structure for Amiga video modes */
+  gfxvidinfo.drawbuffer.pixbytes = 2;
+  gfxvidinfo.drawbuffer.bufmem = (uae_u8 *)Retro_Screen;
   gfxvidinfo.drawbuffer.outwidth = p->gfx_size.width;
   gfxvidinfo.drawbuffer.outheight = p->gfx_size.height << p->gfx_vresolution;
-	gfxvidinfo.drawbuffer.rowbytes =retrow* 2;// prSDLScreen->pitch;
+  gfxvidinfo.drawbuffer.rowbytes =p->gfx_size.width * 2;// prSDLScreen->pitch;
 }
 
 
@@ -337,12 +328,6 @@ void unlockscr (void)
 
 void wait_for_vsync(void)
 {
-/*
-  if(fbdev != -1)
-  {
-    unsigned int dummy;
-    ioctl(fbdev, OMAPFB_WAITFORVSYNC, &dummy);
-  }*/
 
 }
 
@@ -372,31 +357,7 @@ bool render_screen (bool immediate)
 void show_screen (int mode)
 {
   unsigned long start = read_processor_time();
-#if 0
-  if(current_vsync_frame == 0) 
-  {
-    // Old style for vsync and idle time calc
-    if(start < next_synctime && next_synctime - start > time_per_frame - 1000)
-      usleep((next_synctime - start) - 750);
-    //ioctl(fbdev, OMAPFB_WAITFORVSYNC, &current_vsync_frame);
-  } 
-  else 
-  {
-    // New style for vsync and idle time calc
-    int wait_till = current_vsync_frame;
-    do 
-    {
-      ioctl(fbdev, OMAPFB_WAITFORVSYNC_FRAME, &current_vsync_frame);
-    } while (wait_till >= current_vsync_frame);
-    
-    if(wait_till + 1 != current_vsync_frame) 
-    {
-      // We missed a vsync...
-      next_synctime = 0;
-    }
-    current_vsync_frame += currprefs.gfx_framerate;
-  }
-#endif
+
 
   last_synctime = read_processor_time();
 // SDL_Flip(prSDLScreen);

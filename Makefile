@@ -1,4 +1,3 @@
-
 ifeq ($(PLATFORM),)
 	PLATFORM = rpi2
 endif
@@ -337,4 +336,3 @@ endif
 clean:
 	$(RM) $(PROG) $(OBJS) $(CAPS)
 	(cd capsimg ; make clean )
->>>>>>> upstream/master

@@ -27,10 +27,6 @@ STATIC_INLINE int uae_sem_init(uae_sem_t *sem, int dummy, int init)
 
 #include "commpipe.h"
 
-//extern void uae_set_thread_priority (int);
-//#define uae_set_thread_priority(...)
-
-
 typedef SDL_Thread *uae_thread_id;
 #define BAD_THREAD 0
 

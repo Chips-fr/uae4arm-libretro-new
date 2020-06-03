@@ -23,14 +23,7 @@
 #include "uae/vm.h"
 #include "custom.h"
 #include "newcpu.h"
-/*
-#if defined(__LIBRETRO__)
-#include "md-retro/md-fpp.h"
-#endif
-*/
-
 #include "fpp.h"
-
 #include "savestate.h"
 #include "cpu_prefetch.h"
 

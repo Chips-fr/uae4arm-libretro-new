@@ -7,7 +7,6 @@
 #ifndef UAE_DRAWING_H
 #define UAE_DRAWING_H
 
-
 #include "uae/types.h"
 
 #define MAX_PLANES 8

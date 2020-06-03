@@ -483,7 +483,9 @@ int target_cfgfile_load (struct uae_prefs *p, const char *filename, int type, in
   write_log(_T("target_cfgfile_load(): load file %s\n"), filename);
   
   discard_prefs(p, type);
+#ifndef __LIBRETRO__
   default_prefs(p, true, 0);
+#endif
   
 	char *ptr = strstr((char *)filename, ".rp9");
   if(ptr > 0)

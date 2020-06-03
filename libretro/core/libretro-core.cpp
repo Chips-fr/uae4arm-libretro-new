@@ -20,8 +20,7 @@ int retroh=480;
 
 unsigned amiga_devices[ 2 ];
 
-extern int SHIFTON,pauseg,SND ,snd_sampler;
-extern short signed int SNDBUF[1024*2];
+extern int SHIFTON,pauseg,SND;
 extern char RPATH[512];
 extern char RETRO_DIR[512];
 extern int SHOWKEY;
@@ -71,8 +70,8 @@ void retro_set_environment(retro_environment_t cb)
 
       {
          "uae4arm-rpi_resolution",
-         "Internal resolution; 720x568|800x480|640x524|640x480|640x512|640x540|768x480|640x256|640x262|640x270|768x270",
-//         "Internal resolution; 640x480|320x240|320x256|320x262|640x240|640x256|640x262|640x270|768x270",
+//         "Internal resolution; 720x568|800x480|640x524|640x480|640x512|640x540|768x480|640x256|640x262|640x270|768x270",
+         "Internal resolution; 640x480|320x240|320x256|320x262|640x240|640x256|640x262|640x270|768x270",
       },
 
       {
@@ -106,11 +105,11 @@ static void update_variables(void)
       pch = strtok(NULL, "x");
       if (pch)
          retroh = strtoul(pch, NULL, 0);
-/*
+
       changed_prefs.gfx_size.width  = retrow;
       changed_prefs.gfx_size.height = retroh;
-      changed_prefs.gfx_resolution = changed_prefs.gfx_size.width > 600 ? 1 : 0;
-*/
+      changed_prefs.gfx_resolution  = changed_prefs.gfx_size.width > 600 ? 1 : 0;
+
       LOGI("[libretro-uae4arm]: Got size: %u x %u.\n", retrow, retroh);
 
       CROP_WIDTH =retrow;
@@ -125,8 +124,8 @@ static void update_variables(void)
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
    {
-      //if (strcmp(var.value, "on") == 0)  changed_prefs.leds_on_screen = 1;
-      //if (strcmp(var.value, "off") == 0) changed_prefs.leds_on_screen = 0;
+      if (strcmp(var.value, "on") == 0)  changed_prefs.leds_on_screen = 1;
+      if (strcmp(var.value, "off") == 0) changed_prefs.leds_on_screen = 0;
    }
 }
 
@@ -354,7 +353,7 @@ void retro_run(void)
 		if(SHOWKEY )retro_virtualkb();
    }
 
-   video_cb(Retro_Screen,retrow,retroh,retrow<<PIXEL_BYTES);
+   video_cb(Retro_Screen,retrow,retroh * 2,retrow<<PIXEL_BYTES);
  
    co_switch(emuThread);
 
@@ -377,7 +376,6 @@ bool retro_load_game(const struct retro_game_info *info)
 #else
 	memset(Retro_Screen,0,1280*1024*2*2);
 #endif
-	memset(SNDBUF,0,1024*2*2);
 
 	co_switch(emuThread);
 
