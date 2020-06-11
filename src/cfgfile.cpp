@@ -4421,7 +4421,7 @@ void default_prefs (struct uae_prefs *p, bool reset, int type)
 	p->jports[3].id = -1;
 	if (reset) {
 		inputdevice_joyport_config_store(p, _T("mouse"), 0, -1, 0);
-		inputdevice_joyport_config_store(p, _T("joy1"), 1, -1, 0);
+		inputdevice_joyport_config_store(p, _T("joy0"), 1, -1, 0);
 	}
 	p->keyboard_lang = KBD_LANG_US;
 

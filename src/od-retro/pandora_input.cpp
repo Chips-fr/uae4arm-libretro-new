@@ -47,9 +47,9 @@ static int get_mouse_num (void)
 static TCHAR *get_mouse_friendlyname (int mouse)
 {
   if(mouse == 0)
-    return "Nubs as mouse";
+    return "Libretro mouse 0";
   else
-    return "dPad as mouse";
+    return "Libretro mouse 1";
 }
 
 static TCHAR *get_mouse_uniquename (int mouse)
@@ -270,8 +270,7 @@ static char IsPS3Controller[MAX_INPUT_DEVICES];
 
 static int get_joystick_num (void)
 {
-  // Keep joystick 0 as Pandora implementation...
-  return (nr_joysticks + 1);
+  return 2;
 }
 
 static int init_joystick (void)
@@ -309,12 +308,7 @@ static int init_joystick (void)
 
 static void close_joystick (void)
 {
-/*
-  for (int cpt; cpt < nr_joysticks; cpt++)
-  {
-	SDL_JoystickClose (Joysticktable[cpt]);
-  }
-*/
+
 }
 
 
@@ -330,9 +324,9 @@ static void unacquire_joystick (int num)
 static TCHAR *get_joystick_friendlyname (int joy)
 {
   if (joy == 0) 
-    return "dPad as joystick";
+    return "Libretro Joystick 0";
   else
-    return JoystickName[joy - 1];
+    return "Libretro Joystick 1";
 }
 
 static TCHAR *get_joystick_uniquename (int joy)

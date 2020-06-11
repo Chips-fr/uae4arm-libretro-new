@@ -550,7 +550,7 @@ int Retro_PollEvent()
       */
 
 /*      
-	// second joystick.
+      // second joystick.
       for(i=RETRO_DEVICE_ID_JOYPAD_B;i<=RETRO_DEVICE_ID_JOYPAD_A;i++)
       {
          if( input_state_cb(1, RETRO_DEVICE_JOYPAD, 0, i))
@@ -592,7 +592,18 @@ int Retro_PollEvent()
          setjoystickstate (1, 0, right ? 32767 : 0, 32767);
          */
       }
-
+      else
+      {
+         if (input_state_cb(1, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_B) ||
+             input_state_cb(1, RETRO_DEVICE_JOYPAD, 0,RETRO_DEVICE_ID_JOYPAD_A))
+         {
+            LOGI("Switch to joystick mode for Port 0.\n");
+            second_joystick_enable = 1;
+            changed_prefs.jports[0].id   = JSEM_JOYS + 1;
+            changed_prefs.jports[0].mode = JSEM_MODE_JOYSTICK;
+            inputdevice_updateconfig(NULL, &changed_prefs);
+         }
+      }
    }// if pauseg=0
    else{
       // if in gui
@@ -620,6 +631,9 @@ int Retro_PollEvent()
       {
          LOGI("Switch to mouse mode for Port 0.\n");
          second_joystick_enable = 0;   // disable 2nd joystick if mouse activated...
+         changed_prefs.jports[0].id   = JSEM_MICE;
+         changed_prefs.jports[0].mode = JSEM_MODE_MOUSE;
+         inputdevice_updateconfig(NULL, &changed_prefs);
       }
 
    }
@@ -688,7 +702,10 @@ int Retro_PollEvent()
    {
       mouse_l = mouse_r = 0;
       LOGI("Switch to mouse mode for Port 0.\n");
-      second_joystick_enable = 0;   // disble 2nd joystick if mouse activated...
+      second_joystick_enable = 0;   // disable 2nd joystick if mouse activated...
+      changed_prefs.jports[0].id   = JSEM_MICE;
+      changed_prefs.jports[0].mode = JSEM_MODE_MOUSE;
+      inputdevice_updateconfig(NULL, &changed_prefs);
    }
 
    static int mmbL=0,mmbR=0;
