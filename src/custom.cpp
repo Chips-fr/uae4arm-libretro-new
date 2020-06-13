@@ -5081,10 +5081,12 @@ static void fpscounter (void)
 		int fps = fps_mavg.mavg == 0 ? 0 : syncbase * 10 / fps_mavg.mavg;
 		if (fps > 9999)
 			fps = 9999;
+#ifdef __LIBRETRO__
 		if (idle < 0)
 			idle = 0;
 		if (idle > 100 * 10)
 			idle = 100 * 10;
+#endif
 		gui_data.fps = fps;
     gui_data.idle = (int)idle;
   }

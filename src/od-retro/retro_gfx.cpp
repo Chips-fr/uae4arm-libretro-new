@@ -358,23 +358,27 @@ extern DISK_GUI_change (void);
 
 void show_screen (int mode)
 {
-  unsigned long start = read_processor_time();
+  unsigned long start;
 
   DISK_GUI_change();
 
-  last_synctime = read_processor_time();
-// SDL_Flip(prSDLScreen);
+  start = read_processor_time();
+
   co_switch(mainThread);
 
-  idletime += last_synctime - start;
+  idletime = start - last_synctime;
+
+  last_synctime = read_processor_time();
 
   if(!screen_is_picasso)
   	gfxvidinfo.drawbuffer.bufmem = (uae_u8 *)prSDLScreen->pixels;
 
+#if 0
   if (last_synctime - next_synctime > time_per_frame - (long)5000)
     next_synctime = last_synctime + time_per_frame * (1 + currprefs.gfx_framerate);
   else
     next_synctime = next_synctime + time_per_frame * (1 + currprefs.gfx_framerate);
+#endif
 }
 
 
