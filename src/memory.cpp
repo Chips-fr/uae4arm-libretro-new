@@ -725,11 +725,18 @@ static void patch_kick(void)
   	kickstart_fix_checksum (kickmem_bank.baseaddr, kickmem_bank.allocated_size);
 }
 
+extern void Retro_Kickstart_Replacement_Msg(void);
+
 extern unsigned char arosrom[];
 extern unsigned int arosrom_len;
 static bool load_kickstart_replacement (void)
 {
 	struct zfile *f;
+
+#ifdef __LIBRETRO__
+	Retro_Kickstart_Replacement_Msg();
+#endif
+
 	f = zfile_fopen_data (_T("aros.gz"), arosrom_len, arosrom);
 	if (!f)
 		return false;

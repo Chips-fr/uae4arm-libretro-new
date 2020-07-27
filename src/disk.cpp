@@ -4112,9 +4112,11 @@ void changedisk(bool plus)
     if ( access( strnefile.c_str(), F_OK ) != -1 )
     {
         disk_insert(0, strnefile.c_str());
-        LOGI("Insert disk: %s.\n",strnefile.c_str());
+        //LOGI("Insert disk: %s.\n",strnefile.c_str());
     }
     else
-        LOGI("Disk %s not found !.\n",strnefile.c_str());
+    {
+        //LOGI("Disk %s not found !.\n",strnefile.c_str());
+    }
 }
 
