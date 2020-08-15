@@ -120,12 +120,11 @@ OBJS =	\
 ifdef PANDORA
 OBJS += $(EMU)/od-retro/gui/sdltruetypefont.o
 endif
-USE_PICASSO96 := 1
 
 ifeq ($(USE_PICASSO96), 1)
 	OBJS += $(EMU)/od-retro/picasso96.o
 endif
-HAVE_NEON := 1
+
 ifeq ($(HAVE_NEON), 1)
 	OBJS += $(EMU)/od-retro/neon_helper.o
 else

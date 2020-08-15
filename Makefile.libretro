@@ -12,7 +12,7 @@ else ifneq ($(findstring Darwin,$(shell uname -a)),)
 else ifneq ($(findstring win,$(shell uname -a)),)
 	platform = win
 else ifneq ($(findstring arm,$(shell uname -a)),)
-	PLATFLAGS +=  -DARM  -marm	
+	PLATFLAGS +=  -DARM  -marm
 endif
 endif
 
@@ -21,19 +21,29 @@ TARGET_NAME := uae4arm
 CORE_DIR  := .
 ROOT_DIR  := .
 
-ifeq ($(platform), unix)
+	# Default (ARM) unix
+ifneq (,$(findstring unix,$(platform)))
 	TARGET := $(TARGET_NAME)_libretro.so
 	fpic := -fPIC
 	LDFLAGS := -lz -lpthread
 	SHARED := -shared -Wl,--version-script=$(CORE_DIR)/libretro/link.T 
+   	ifneq (,$(findstring neon,$(platform)))
+		PLATFORM_DEFINES += -mfpu=neon -march=armv7-a
+		CFLAGS += $(PLATFORM_DEFINES)
+		MORE_CFLAGS += -DARMV6T2 -DUSE_JIT_FPU -DARM_HAS_DIV
+		HAVE_NEON = 1
+		USE_PICASSO96 = 1
+		CPU_FLAGS +=  -marm
+	endif
 else ifeq ($(platform), crosspi)
    	TARGET := $(TARGET_NAME)_libretro.so
    	fpic = -fPIC
    	SHARED :=-shared -Wl,--version-script=$(CORE_DIR)/libretro/link.T -Wl,--no-undefined -L ../usr/lib -static-libstdc++ -static-libgcc
 	PLATFORM_DEFINES += -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard
-	CPU_FLAGS +=  -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -D__arm__ -DARM_ASM -D__NEON_OPT
+	CPU_FLAGS +=  -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -D__arm__
+	MORE_CFLAGS += -DARMV6T2 -DUSE_JIT_FPU -DARM_HAS_DIV
 
-	PLATFORM_DEFINES += -I ../usr/include -DLSB_FIRST -DALIGN_DWORD -DWITH_LOGGING
+	PLATFORM_DEFINES += -I ../usr/include
 	HAVE_NEON = 1
 	USE_PICASSO96 = 1
 	CFLAGS += $(PLATFORM_DEFINES)
@@ -46,14 +56,13 @@ else ifeq ($(platform), crossand)
    	fpic = -fPIC
    	SHARED :=-shared -Wl,--version-script=$(CORE_DIR)/libretro/link.T -Wl,--no-undefined -L ../usr/lib -static-libstdc++ -static-libgcc  
 	PLATFORM_DEFINES +=  -marm  -march=armv7-a -mfloat-abi=softfp -mfpu=neon
-        CPU_FLAGS += -marm  -march=armv7-a -mfloat-abi=softfp -mfpu=neon -D__arm__ -DARM_ASM -D__NEON_OPT
+        CPU_FLAGS += -marm  -march=armv7-a -mfloat-abi=softfp -mfpu=neon -D__arm__ 
 
-	#MORE_CFLAGS += -DRASPBERRY -DCAPSLOCK_DEBIAN_WORKAROUND -DARMV6T2 -DUSE_JIT_FPU -DARM_HAS_DIV
+	MORE_CFLAGS += -DARMV6T2 -DUSE_JIT_FPU -DARM_HAS_DIV
 	#-march=armv7-a -mfloat-abi=hard -mhard-float  
 	#-mfpu=neon
-	# -mfpu=neon-vfpv4 -mfloat-abi=hard
+	#-mfpu=neon-vfpv4 -mfloat-abi=hard
 
-	PLATFORM_DEFINES +=  -DLSB_FIRST -DALIGN_DWORD -DWITH_LOGGING
 	HAVE_NEON = 1
 	USE_PICASSO96 = 1
 	CFLAGS += $(PLATFORM_DEFINES)
@@ -68,10 +77,9 @@ else ifeq ($(platform), rpi3)
    	fpic = -fPIC
    	SHARED :=-shared -Wl,--version-script=$(CORE_DIR)/libretro/link.T -Wl,--no-undefined
 	PLATFORM_DEFINES += -marm -mcpu=cortex-a53 -mfpu=neon-fp-armv8  -mfloat-abi=hard
-	CPU_FLAGS +=  -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -D__arm__ -DARM_ASM -D__NEON_OPT
-	MORE_CFLAGS += -DRASPBERRY -DCAPSLOCK_DEBIAN_WORKAROUND -DARMV6T2 -DUSE_JIT_FPU -DARM_HAS_DIV
+	CPU_FLAGS +=  -marm -mcpu=cortex-a53 -mfpu=neon-vfpv4 -mfloat-abi=hard -D__arm__
+	MORE_CFLAGS += -DARMV6T2 -DUSE_JIT_FPU -DARM_HAS_DIV
 
-	PLATFORM_DEFINES +=   -DLSB_FIRST -DALIGN_DWORD -DWITH_LOGGING
 	HAVE_NEON = 1
 	USE_PICASSO96 = 1
 	CFLAGS += $(PLATFORM_DEFINES)
@@ -84,10 +92,9 @@ else ifeq ($(platform), rpi2)
    	fpic = -fPIC
    	SHARED :=-shared -Wl,--version-script=$(CORE_DIR)/libretro/link.T -Wl,--no-undefined
 	PLATFORM_DEFINES += -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard
-	CPU_FLAGS +=  -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -D__arm__ -DARM_ASM -D__NEON_OPT
-	MORE_CFLAGS += -DRASPBERRY -DCAPSLOCK_DEBIAN_WORKAROUND -DARMV6T2 -DUSE_JIT_FPU -DARM_HAS_DIV
+	CPU_FLAGS +=  -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard -D__arm__
+	MORE_CFLAGS += -DARMV6T2 -DUSE_JIT_FPU -DARM_HAS_DIV
 
-	PLATFORM_DEFINES +=   -DLSB_FIRST -DALIGN_DWORD -DWITH_LOGGING
 	HAVE_NEON = 1
 	USE_PICASSO96 = 1
 	CFLAGS += $(PLATFORM_DEFINES)
@@ -107,7 +114,7 @@ else ifeq ($(platform), osx)
 	TARGET := $(TARGET_NAME)_libretro.dylib
 	fpic := -fPIC -mmacosx-version-min=10.6
 	SHARED := -dynamiclib
-	PLATFLAGS +=  -DRETRO -DLSB_FIRST -DALIGN_DWORD
+	PLATFLAGS +=  -DRETRO
 else ifeq ($(platform), android)
 	CC = arm-linux-androideabi-gcc
 	CXX =arm-linux-androideabi-g++
@@ -117,7 +124,7 @@ else ifeq ($(platform), android)
 	fpic := -fPIC
 	LDFLAGS := -lz -lm -llog
 	SHARED :=  -Wl,--fix-cortex-a8 -shared -Wl,--version-script=$(CORE_DIR)/libretro/link.T -Wl,--no-undefined
-	PLATFLAGS += -DWITH_LOGGING -DANDROID -DRETRO -DAND -DLSB_FIRST -DALIGN_DWORD -DANDPORT -DARM_OPT_TEST=1
+	PLATFLAGS += -DANDROID -DRETRO -DAND -DANDPORT -DARM_OPT_TEST=1
 else ifeq ($(platform), wii)
 	TARGET := $(TARGET_NAME)_libretro_wii.a
 	CC = $(DEVKITPPC)/bin/powerpc-eabi-gcc$(EXE_EXT)
@@ -127,7 +134,7 @@ else ifeq ($(platform), wii)
 	-DWIIPORT=1 -DHAVE_MEMALIGN -DHAVE_ASPRINTF -I$(ZLIB_DIR) -I$(DEVKITPRO)/libogc/include \
 	-D__powerpc__ -D__POWERPC__ -DGEKKO -DHW_RVL -mrvl -mcpu=750 -meabi -mhard-float -D__ppc__
 	LDFLAGS :=   -lm -lpthread -lc
-	PLATFLAGS +=  -DRETRO -DALIGN_DWORD -DWIIPORT
+	PLATFLAGS +=  -DRETRO -DWIIPORT
 else ifeq ($(platform), ps3)
 	TARGET := $(TARGET_NAME)_libretro_ps3.a
 	CC = $(CELL_SDK)/host-win32/ppu/bin/ppu-lv2-gcc.exe
@@ -136,7 +143,7 @@ else ifeq ($(platform), ps3)
 	LDFLAGS :=   -lm -lpthread -lc
 	CFLAGS += -DSDL_BYTEORDER=SDL_BIG_ENDIAN -DMSB_FIRST -DBYTE_ORDER=BIG_ENDIAN  -DBYTE_ORDER=BIG_ENDIAN \
 	-D__CELLOS_LV2 -DPS3PORT=1 -DHAVE_MEMALIGN -DHAVE_ASPRINTF -I$(ZLIB_DIR) 
-	PLATFLAGS +=  -DRETRO -DALIGN_DWORD 
+	PLATFLAGS +=  -DRETRO 
 else
 ifeq ($(subplatform), 32)
 	CC = i586-mingw32msvc-gcc
@@ -144,7 +151,7 @@ else
 	CC = x86_64-w64-mingw32-gcc
 	CFLAGS += -fno-aggressive-loop-optimizations
 endif
-	PLATFLAGS +=  -DRETRO -DLSB_FIRST -DALIGN_DWORD -DWIN32PORT -DWIN32
+	PLATFLAGS +=  -DRETRO -DWIN32PORT -DWIN32
 	TARGET := $(TARGET_NAME)_libretro.dll
 	fpic := -fPIC
 	SHARED := -shared -static-libgcc -s -Wl,--version-script=$(CORE_DIR)/libretro/link.T -Wl,--no-undefined 
@@ -166,7 +173,7 @@ endif
 
 DEFINES += 
 
-DEFS += -DCPU_arm -DARM_ASSEMBLY -DARMV6_ASSEMBLY -DGP2X -DPANDORA -DSIX_AXIS_WORKAROUND
+DEFS += -DCPU_arm -DARM_ASSEMBLY -DARMV6_ASSEMBLY -DGP2X -DPANDORA
 DEFS += -DROM_PATH_PREFIX=\"./\" -DDATA_PREFIX=\"./data/\" -DSAVE_PREFIX=\"./saves/\"
 DEFS += -DRASPBERRY -DWITH_INGAME_WARNING
 #-DANDROIDSDL 
