@@ -5285,23 +5285,6 @@ bool inputdevice_get_eventname (const struct inputevent *ie, TCHAR *out)
 
 int inputdevice_iterate (int devnum, int num, TCHAR *name, int *af)
 {
-/*
-<<<<<<< HEAD
-    do_mouse_hack ();
-
-#if  defined(__LIBRETRO__)
-        return ((uae_u8)mouse_x) | ((uae_u16)mouse_y << 8);
-#endif
-
-#ifdef RASPBERRY
-    if (currprefs.pandora_custom_dpad == 0)
-        return joy0dir;
-    if (currprefs.pandora_custom_dpad == 1)
-        return ((uae_u8)mouse_x) | ((uae_u16)mouse_y << 8);
-#else
-    return ((uae_u8)mouse_x) + ((uae_u16)mouse_y << 8) + joy0dir;
-=======
-*/
 	const struct inputdevice_functions *idf = getidf (devnum);
 	static int id_iterator;
 	const struct inputevent *ie;

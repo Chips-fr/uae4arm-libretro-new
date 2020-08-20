@@ -64,7 +64,7 @@ int MOUSE_EMULATED=1;
 int MOUSE_EMULATED=-1;
 #endif
 
-int SHIFTON=-1,PAS=1;
+int SHIFTON=-1,PAS=3;
 int SND=1; //SOUND ON/OFF
 static int firstps=0;
 int pauseg=0; //enter_gui

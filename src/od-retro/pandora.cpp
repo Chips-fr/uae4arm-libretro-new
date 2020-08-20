@@ -1013,14 +1013,11 @@ co_switch(mainThread);
   return 0;
 }
 
-extern int Retro_PollEvent();
-
 int handle_msgpump (void)
 {
 
 	int got = 0;
 
-Retro_PollEvent();
 
 #if 0
   SDL_Event rEvent;

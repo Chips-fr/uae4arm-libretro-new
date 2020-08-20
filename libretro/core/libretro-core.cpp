@@ -489,23 +489,30 @@ void retro_audiocb(signed short int *sound_buffer,int sndbufsize){
 }
 
 
+extern int Retro_PollEvent();
+
 void retro_run(void)
 {
    int x;
-
    bool updated = false;
+   static bool AvoidFirstPoll = 0;
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated)
       update_variables();
 
-   if(pauseg==0)
-   {
-      if(SHOWKEY )retro_virtualkb();
-   }
-
-   video_cb(Retro_Screen,retrow,retroh * 2,retrow<<PIXEL_BYTES);
+   // First poll segfault since emu not initialized...
+   if (AvoidFirstPoll == 0)
+      AvoidFirstPoll = 1;
+   else
+      Retro_PollEvent();
  
    co_switch(emuThread);
+
+   if(pauseg==0)
+      if(SHOWKEY)
+         retro_virtualkb();
+
+   video_cb(Retro_Screen,retrow,retroh * 2,retrow<<PIXEL_BYTES);
 
 }
 
