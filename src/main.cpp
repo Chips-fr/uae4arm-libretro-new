@@ -680,6 +680,7 @@ void overwrite_with_retroarch_opt(void)
    currprefs.m68k_speed =       tmp_prefs.m68k_speed;
    currprefs.cpu_compatible =   tmp_prefs.cpu_compatible;
    currprefs.floppy_speed =     tmp_prefs.floppy_speed;
+   currprefs.gfx_vresolution =  tmp_prefs.gfx_vresolution;
 }
 
 static int real_main2 (int argc, TCHAR **argv)

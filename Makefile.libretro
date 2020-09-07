@@ -25,7 +25,7 @@ ROOT_DIR  := .
 ifneq (,$(findstring unix,$(platform)))
 	TARGET := $(TARGET_NAME)_libretro.so
 	fpic := -fPIC
-	LDFLAGS := -lz -lpthread
+	LDFLAGS := -lz -lpthread -lxml2 -lFLAC -lmpg123 -lmpeg2convert -lmpeg2 -ldl
 	SHARED := -shared -Wl,--version-script=$(CORE_DIR)/libretro/link.T 
    	ifneq (,$(findstring neon,$(platform)))
 		PLATFORM_DEFINES += -mfpu=neon -march=armv7-a

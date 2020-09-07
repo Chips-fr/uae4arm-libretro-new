@@ -102,6 +102,7 @@ void retro_set_environment(retro_environment_t cb)
       { "uae4arm_resolution",     "Internal resolution; 640x270|320x240|320x256|320x262|640x240|640x256|640x262|640x270|768x270", },
       { "uae4arm_leds_on_screen", "Leds on screen; on|off", },
       { "uae4arm_floppy_speed",   "Floppy speed; 100|200|400|800", },
+      { "uae4arm_linedoubling",   "Line doubling (de-interlace); off|on", },
       { NULL, NULL },
    };
 
@@ -185,7 +186,7 @@ static void update_variables(void)
 
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
    {
-      if (strcmp(var.value, "on") == 0)  changed_prefs.leds_on_screen = 1;
+      if (strcmp(var.value, "on")  == 0) changed_prefs.leds_on_screen = 1;
       if (strcmp(var.value, "off") == 0) changed_prefs.leds_on_screen = 0;
    }
 
@@ -193,6 +194,7 @@ static void update_variables(void)
    var.value = NULL;
    if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
    {
+      LOGI("[libretro-uae4arm]: Got model: %s.\n", var.value);
       if (strcmp(var.value, "A500") == 0)
       {
          //strcat(uae_machine, A500);
@@ -271,6 +273,15 @@ static void update_variables(void)
    {
       changed_prefs.floppy_speed=atoi(var.value);
    }
+
+   var.key = "uae4arm_linedoubling";
+   var.value = NULL;
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      if (strcmp(var.value, "on")  == 0) changed_prefs.gfx_vresolution = 1;
+      if (strcmp(var.value, "off") == 0) changed_prefs.gfx_vresolution = 0;
+   }
+
    
    //fixup_prefs (&changed_prefs);
 }
@@ -512,7 +523,7 @@ void retro_run(void)
       if(SHOWKEY)
          retro_virtualkb();
 
-   video_cb(Retro_Screen,retrow,retroh * 2,retrow<<PIXEL_BYTES);
+   video_cb(Retro_Screen,retrow,retroh * 1 << (currprefs.gfx_vresolution),retrow<<PIXEL_BYTES);
 
 }
 
@@ -546,7 +557,7 @@ void retro_unload_game(void){
 
 unsigned retro_get_region(void)
 {
-   return RETRO_REGION_NTSC;
+   return RETRO_REGION_PAL;
 }
 
 bool retro_load_game_special(unsigned type, const struct retro_game_info *info, size_t num)
