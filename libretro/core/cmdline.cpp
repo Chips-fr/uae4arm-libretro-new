@@ -90,6 +90,13 @@ int pre_main(const char *argv)
 			sprintf(tmpstr,"hardfile=rw,32,1,2,512,%s\0",RPATH);
 			Add_Option(tmpstr);
 		}
+                else if( (!strcasecmp(&RPATH[strlen(RPATH)-strlen("iso")], "iso"))
+                        || (!strcasecmp(&RPATH[strlen(RPATH)-strlen("cue")], "cue")))
+                {
+                        Add_Option("-s");
+                        sprintf(tmpstr,"cdimage0=%s\0",RPATH);
+                        Add_Option(tmpstr);
+                }
 		else
 		{
 			Add_Option("-s");
@@ -119,6 +126,7 @@ int pre_main(const char *argv)
    skel_main(PARAMCOUNT,( char **)xargv_cmd); 
 
    xargv_cmd[PARAMCOUNT - 2] = NULL;
+   return 0;
 }
 
 void parse_cmdline(const char *argv)

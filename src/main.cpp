@@ -667,6 +667,8 @@ void leave_program (void)
 void overwrite_with_retroarch_opt(void)
 {
    // Save options coming from libretro options...
+   // Should we use built_in_prefs instead ?
+
    currprefs.gfx_size.width =   tmp_prefs.gfx_size.width;
    currprefs.gfx_size.height =  tmp_prefs.gfx_size.height;
    currprefs.gfx_resolution =   tmp_prefs.gfx_resolution;
@@ -681,6 +683,21 @@ void overwrite_with_retroarch_opt(void)
    currprefs.cpu_compatible =   tmp_prefs.cpu_compatible;
    currprefs.floppy_speed =     tmp_prefs.floppy_speed;
    currprefs.gfx_vresolution =  tmp_prefs.gfx_vresolution;
+   strcpy (currprefs.romextfile,     tmp_prefs.romextfile);
+   strcpy (currprefs.cdslots[0].name,tmp_prefs.cdslots[0].name);
+   if (strlen(currprefs.romextfile))
+   {
+      // If we have romexfile set CD32 config...
+      currprefs.cs_cd32c2p = currprefs.cs_cd32cd = currprefs.cs_cd32nvram = true;
+      currprefs.cs_compatible = CP_CD32;
+      currprefs.floppyslots[0].dfxtype = DRV_NONE;
+      currprefs.floppyslots[1].dfxtype = DRV_NONE;
+      currprefs.nr_floppies=0;
+      currprefs.cdslots[0].inuse = true;
+      currprefs.cdslots[0].type = SCSI_UNIT_IMAGE;
+      currprefs.bogomem_size = 0;
+      //built_in_prefs (&currprefs, 5, 1, 0, 0);
+   }
 }
 
 static int real_main2 (int argc, TCHAR **argv)

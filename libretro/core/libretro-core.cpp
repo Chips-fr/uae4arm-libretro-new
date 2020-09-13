@@ -55,6 +55,8 @@ static retro_environment_t environ_cb;
 #define A500_ROM        "kick34005.A500"
 #define A600_ROM        "kick40063.A600"
 #define A1200_ROM       "kick40068.A1200"
+#define CD32_ROM        "kick40060.CD32"
+#define CD32_ROM_EXT    "kick40060.CD32.ext"
 
 static char uae_machine[256];
 static char uae_kickstart[16];
@@ -97,7 +99,7 @@ void retro_set_environment(retro_environment_t cb)
   cb( RETRO_ENVIRONMENT_SET_CONTROLLER_INFO, (void*)ports );
 
   struct retro_variable variables[] = {
-      { "uae4arm_model",          "Model; A500|A600|A1200", },
+      { "uae4arm_model",          "Model; A500|A600|A1200|CD32", },
       { "uae4arm_fastmem",        "Fast Mem; None|1 MB|2 MB|4 MB|8 MB", },
       { "uae4arm_resolution",     "Internal resolution; 640x270|320x240|320x256|320x262|640x240|640x256|640x262|640x270|768x270", },
       { "uae4arm_leds_on_screen", "Leds on screen; on|off", },
@@ -237,6 +239,29 @@ static void update_variables(void)
          //strcpy(changed_prefs.romfile, A1200_ROM);
          path_join(changed_prefs.romfile, retro_system_directory, A1200_ROM);
       }
+      if (strcmp(var.value, "CD32") == 0)
+      {
+
+         #define DRV_NONE -1
+         #define SCSI_UNIT_IMAGE 1
+
+         //strcat(uae_machine, CD32);
+         //strcpy(uae_kickstart, CD32_ROM);
+         //changed_prefs.cpu_type="68ec020";
+         changed_prefs.cpu_model = 68020;
+         changed_prefs.chipmem_size = 4 * 0x80000;
+         changed_prefs.m68k_speed = M68K_SPEED_14MHZ_CYCLES;
+         changed_prefs.cpu_compatible = 0;
+         changed_prefs.address_space_24 = 1;
+         changed_prefs.chipset_mask = CSMASK_AGA | CSMASK_ECS_DENISE | CSMASK_ECS_AGNUS;
+         //strcpy(changed_prefs.romfile, CD32_ROM);
+         path_join(changed_prefs.romfile,    retro_system_directory, CD32_ROM);
+         path_join(changed_prefs.romextfile, retro_system_directory, CD32_ROM_EXT);
+         changed_prefs.floppyslots[0].dfxtype = DRV_NONE;
+         changed_prefs.floppyslots[1].dfxtype = DRV_NONE;
+         changed_prefs.cdslots[0].inuse = true;
+         changed_prefs.cdslots[0].type = SCSI_UNIT_IMAGE;
+      }
    }
 
 
@@ -321,8 +346,8 @@ void Emu_init(){
 }
 
 void Emu_uninit(){
-
    texture_uninit();
+   uae_quit ();
 }
 
 void retro_shutdown_core(void)
@@ -462,7 +487,7 @@ void retro_get_system_info(struct retro_system_info *info)
    memset(info, 0, sizeof(*info));
    info->library_name     = "uae4arm";
    info->library_version  = "0.5";
-   info->valid_extensions = "adf|dms|zip|ipf|hdf|lha|uae";
+   info->valid_extensions = "adf|dms|zip|ipf|hdf|lha|uae|cue|iso";
    info->need_fullpath    = true;
    info->block_extract    = true;
 }
