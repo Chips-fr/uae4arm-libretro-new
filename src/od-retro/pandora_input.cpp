@@ -102,6 +102,7 @@ extern int gmx,gmy;
 
 static void read_mouse (void) 
 {
+  return;
   if(currprefs.input_tablet > TABLET_OFF) {
     // Mousehack active
     int x, y;
@@ -422,7 +423,7 @@ extern unsigned char uae4all_keystate[320];
 
 static void read_joystick (void)
 {
-
+  return;
   for (int joyid = 0; joyid < MAX_JPORTS ; joyid ++)
   // First handle fake joystick from pandora...
   if(currprefs.jports[joyid].id == JSEM_JOYS)
